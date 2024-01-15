@@ -2,6 +2,8 @@
 
 _title work in progress_
 
+_This repository is mirrored at [GitHub][github-repo]_
+
 This is an experimental text-based adventure game that uses a
 locally-hosted large language model (LLM) to:
 
@@ -96,3 +98,4 @@ others.
 [koboldcpp]: https://github.com/LostRuins/koboldcpp
 [ai-model]: https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF
 [agpl]: https://www.gnu.org/licenses/agpl-3.0.en.html
+[github-repo]: https://github.com/ProjectMoon/ai-game
