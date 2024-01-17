@@ -19,7 +19,7 @@ pub struct CommandExecutor {
     db: Rc<Database>,
 }
 
-impl<'a> CommandExecutor {
+impl CommandExecutor {
     pub fn new(logic: Rc<AiLogic>, db: Rc<Database>) -> CommandExecutor {
         CommandExecutor { logic, db }
     }
