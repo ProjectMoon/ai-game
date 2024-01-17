@@ -12,8 +12,7 @@ use anyhow::{bail, Result};
 use itertools::Itertools;
 use std::rc::Rc;
 
-use super::generator::AiClient;
-
+use super::generator::AiGenerator;
 use super::coherence::AiCoherence;
 
 /// Highest-level AI/LLM construct, which returns fully converted game
@@ -22,14 +21,14 @@ use super::coherence::AiCoherence;
 /// entities from their seeds. Then, stick a DB ID on them and put
 /// them in the database(?).
 pub struct AiLogic {
-    generator: Rc<AiClient>,
+    generator: Rc<AiGenerator>,
     coherence: AiCoherence,
     db: Rc<Database>,
 }
 
 impl AiLogic {
     pub fn new(api_client: Rc<KoboldClient>, db: &Rc<Database>) -> AiLogic {
-        let generator = Rc::new(AiClient::new(api_client));
+        let generator = Rc::new(AiGenerator::new(api_client));
         let coherence = AiCoherence::new(generator.clone());
 
         AiLogic {

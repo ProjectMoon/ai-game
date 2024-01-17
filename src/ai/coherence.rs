@@ -11,7 +11,7 @@ use crate::models::{
     Content, ContentContainer, ContentRelation,
 };
 
-use super::generator::AiClient;
+use super::generator::AiGenerator;
 
 const DIRECTIONS: [&str; 15] = [
     "north",
@@ -80,11 +80,11 @@ fn is_duplicate_recorded(failures: &[CoherenceFailure], exit: &Exit) -> bool {
 }
 
 pub(super) struct AiCoherence {
-    generator: Rc<AiClient>,
+    generator: Rc<AiGenerator>,
 }
 
 impl AiCoherence {
-    pub fn new(generator: Rc<AiClient>) -> AiCoherence {
+    pub fn new(generator: Rc<AiGenerator>) -> AiCoherence {
         AiCoherence { generator }
     }
 

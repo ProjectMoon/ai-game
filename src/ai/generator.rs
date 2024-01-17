@@ -26,16 +26,16 @@ fn find_exit_position(exits: &[Exit], exit_to_find: &Exit) -> Result<usize> {
 /// information via the LLM and doing basic coherence on it. Things
 /// like ID creation, data management, and advanced coherence are done
 /// at a higher level.
-pub struct AiClient {
+pub struct AiGenerator {
     parsing_convo: AiConversation,
     world_creation_convo: AiConversation,
     person_creation_convo: AiConversation,
     execution_convo: AiConversation,
 }
 
-impl AiClient {
-    pub fn new(client: Rc<KoboldClient>) -> AiClient {
-        AiClient {
+impl AiGenerator {
+    pub fn new(client: Rc<KoboldClient>) -> AiGenerator {
+        AiGenerator {
             parsing_convo: AiConversation::new(client.clone()),
             world_creation_convo: AiConversation::new(client.clone()),
             person_creation_convo: AiConversation::new(client.clone()),
