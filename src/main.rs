@@ -1,6 +1,7 @@
 use anyhow::Result;
 use config::Config;
 use game_loop::GameLoop;
+use ai::logic::AiLogic;
 use models::world::scenes::{root_scene_id, Stage};
 use state::GameState;
 use std::{io::stdout, rc::Rc, time::Duration};
@@ -101,7 +102,7 @@ async fn main() -> Result<()> {
         base_client,
     ));
     let db = Rc::new(Database::new(conn, "test_world").await?);
-    let logic = ai::AiLogic::new(client, &db);
+    let logic = AiLogic::new(client, &db);
 
     let mut state = GameState {
         logic,

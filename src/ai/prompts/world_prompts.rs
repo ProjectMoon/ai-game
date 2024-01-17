@@ -1,5 +1,5 @@
 use crate::{
-    ai::AiPrompt,
+    ai::convo::AiPrompt,
     models::world::{
         raw::{PersonSeed, SceneSeed},
         scenes::{Exit, Scene, SceneStub},

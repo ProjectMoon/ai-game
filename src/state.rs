@@ -1,6 +1,6 @@
 use crate::models::Insertable;
 use crate::{
-    ai::AiLogic,
+    ai::logic::AiLogic,
     db::Database,
     models::{
         commands::CommandEvent,

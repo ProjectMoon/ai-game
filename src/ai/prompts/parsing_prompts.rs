@@ -1,4 +1,4 @@
-use crate::ai::AiPrompt;
+use crate::ai::convo::AiPrompt;
 
 pub const COMMAND_BNF: &str = r#"
 root ::= Commands

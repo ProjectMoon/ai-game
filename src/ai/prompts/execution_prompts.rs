@@ -1,4 +1,4 @@
-use crate::ai::AiPrompt;
+use crate::ai::convo::AiPrompt;
 use crate::models::commands::{Command, CommandEvent, EventConversionFailures};
 use crate::models::world::scenes::{Scene, Stage};
 use strum::VariantNames;
