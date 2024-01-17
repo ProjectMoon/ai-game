@@ -44,7 +44,6 @@ impl GameLoop {
 
     async fn execute_command(&mut self, cmd: &str) -> Result<CommandExecution> {
         let stage = &self.state.current_scene;
-
         let cached_command = self.db.load_cached_command(cmd, &stage.scene).await?;
 
         let execution = if let Some(cached) = cached_command {

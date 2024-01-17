@@ -13,7 +13,6 @@ use std::convert::TryFrom;
 use strum::VariantNames;
 
 type EventConversionResult = std::result::Result<CommandEvent, EventConversionError>;
-type RefEventConversionResult<'a> = std::result::Result<&'a CommandEvent, EventConversionError>;
 
 impl CommandEvent {
     pub fn new(raw_event: RawCommandEvent) -> EventConversionResult {
@@ -84,9 +83,9 @@ pub async fn convert_raw_execution(
             Err(err) => Either::Right(err),
         });
 
-    // Coherence check of converted events.
+    // Coherence validation of converted events.
     let (successes, incoherent_events): (Vec<_>, Vec<_>) = stream::iter(converted.into_iter())
-        .then(|event| check_event_coherence(db, event))
+        .then(|event| validate_event_coherence(db, event))
         .collect::<Vec<_>>()
         .await
         .into_iter()
@@ -123,7 +122,7 @@ fn deserialize_recognized_event(
         "change_scene" => Ok(CommandEvent::ChangeScene {
             scene_key: raw_event
                 .parameter
-                .strip_prefix("scenes/")
+                .strip_prefix("scenes/") // Mini coherence check
                 .map(String::from)
                 .unwrap_or(raw_event.parameter)
                 .clone(),
@@ -166,7 +165,7 @@ fn deserialize_take_damage(
     }
 }
 
-async fn check_event_coherence<'a>(
+async fn validate_event_coherence<'a>(
     db: &Database,
     event: CommandEvent,
 ) -> std::result::Result<CommandEvent, EventCoherenceFailure> {
@@ -182,6 +181,8 @@ async fn check_event_coherence<'a>(
     }
 }
 
+/// The event was converted from the raw response properly, but the
+/// information contained in the response is not valid.
 fn invalid_converted_event(event: CommandEvent) -> Option<EventCoherenceFailure> {
     match event {
         CommandEvent::ChangeScene { .. } => Some(EventCoherenceFailure::TargetDoesNotExist(event)),
@@ -189,6 +190,9 @@ fn invalid_converted_event(event: CommandEvent) -> Option<EventCoherenceFailure>
     }
 }
 
+/// The event was converted from the raw response properly, but
+/// something went wrong with attempting to check the coherence of the
+/// converted event.
 fn invalid_converted_event_because_err(
     event: CommandEvent,
     err: anyhow::Error,
