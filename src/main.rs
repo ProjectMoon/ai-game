@@ -102,7 +102,7 @@ async fn main() -> Result<()> {
         base_client,
     ));
     let db = Rc::new(Database::new(conn, "test_world").await?);
-    let logic = AiLogic::new(client, &db);
+    let logic = Rc::new(AiLogic::new(client, &db));
 
     let mut state = GameState {
         logic,
@@ -114,7 +114,7 @@ async fn main() -> Result<()> {
 
     load_root_scene(&db, &mut state).await?;
 
-    let mut game_loop = GameLoop::new(state, db.clone());
+    let mut game_loop = GameLoop::new(state, &db);
     game_loop.run_loop().await?;
 
     Ok(())

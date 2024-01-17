@@ -1,7 +1,7 @@
 use crate::db::Database;
 use crate::kobold_api::Client as KoboldClient;
 use crate::models::commands::{
-    CommandExecution, Commands, ExecutionConversionResult, RawCommandExecution,
+    AiCommand, ParsedCommands, ExecutionConversionResult, RawCommandExecution,
 };
 use crate::models::world::items::{Category, Item, Rarity};
 use crate::models::world::people::{Gender, Person, Sex};
@@ -40,23 +40,23 @@ impl AiLogic {
     }
 
     pub async fn execute(
-        &mut self,
+        &self,
         stage: &Stage,
         cmd: &str,
-    ) -> Result<(Commands, CommandExecution)> {
+    ) -> Result<(ParsedCommands, RawCommandExecution)> {
         let parsed_cmd = self.generator.parse(cmd).await?;
         let execution = self.execute_parsed(stage, &parsed_cmd).await?;
         Ok((parsed_cmd, execution))
     }
 
     pub async fn execute_parsed(
-        &mut self,
+        &self,
         stage: &Stage,
-        parsed_cmd: &Commands,
-    ) -> Result<CommandExecution> {
+        parsed_cmd: &ParsedCommands,
+    ) -> Result<RawCommandExecution> {
         //TODO handle multiple commands in list
         if parsed_cmd.commands.is_empty() {
-            return Ok(CommandExecution::empty());
+            return Ok(RawCommandExecution::empty());
         }
 
         let cmd = &parsed_cmd.commands[0];
@@ -67,21 +67,12 @@ impl AiLogic {
         // Set aside anything with correct event, but wrong parameters.
         // Ask LLM to fix them, if possible
         //TODO make a aiclient::fix_execution
-        let converted = command_converter::convert_raw_execution(raw_exec, &self.db).await;
 
         self.generator.reset_commands();
-
-        //TODO handle the errored events aside from yeeting them out
-        match converted {
-            ExecutionConversionResult::Success(execution) => Ok(execution),
-            ExecutionConversionResult::PartialSuccess(execution, _) => Ok(execution),
-            ExecutionConversionResult::Failure(failures) => {
-                bail!("unhandled command execution failure: {:?}", failures)
-            }
-        }
+        Ok(raw_exec)
     }
 
-    pub async fn create_person(&mut self, scene: &SceneSeed, seed: &PersonSeed) -> Result<Person> {
+    pub async fn create_person(&self, scene: &SceneSeed, seed: &PersonSeed) -> Result<Person> {
         self.generator.reset_person_creation();
         let details = self.generator.create_person_details(scene, seed).await?;
 
@@ -123,7 +114,7 @@ impl AiLogic {
         })
     }
 
-    pub async fn create_item(&mut self, scene: &SceneSeed, seed: &ItemSeed) -> Result<Item> {
+    pub async fn create_item(&self, scene: &SceneSeed, seed: &ItemSeed) -> Result<Item> {
         let details = self.generator.create_item_details(scene, seed).await?;
 
         // TODO these have to be sent to the AI
@@ -143,7 +134,7 @@ impl AiLogic {
     }
 
     pub async fn create_scene_with_id(
-        &mut self,
+        &self,
         scene_type: &str,
         fantasticalness: &str,
         scene_id: &str,
@@ -156,7 +147,7 @@ impl AiLogic {
     }
 
     pub async fn create_scene_from_stub(
-        &mut self,
+        &self,
         stub: SceneStub,
         connected_scene: &Scene,
     ) -> Result<ContentContainer> {
@@ -181,7 +172,7 @@ impl AiLogic {
     }
 
     pub async fn create_scene(
-        &mut self,
+        &self,
         scene_type: &str,
         fantasticalness: &str,
     ) -> Result<ContentContainer> {
@@ -200,7 +191,7 @@ impl AiLogic {
     }
 
     async fn fill_in_scene_from_stub(
-        &mut self,
+        &self,
         seed: SceneSeed,
         stub: SceneStub,
     ) -> Result<ContentContainer> {
@@ -212,7 +203,7 @@ impl AiLogic {
         Ok(content)
     }
 
-    async fn fill_in_scene(&mut self, mut scene_seed: SceneSeed) -> Result<ContentContainer> {
+    async fn fill_in_scene(&self, mut scene_seed: SceneSeed) -> Result<ContentContainer> {
         let mut content_in_scene = vec![];
 
         // People in scene

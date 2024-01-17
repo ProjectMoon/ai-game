@@ -1,7 +1,7 @@
 use crate::{
     db::Database,
     models::commands::{
-        CommandEvent, CommandExecution, EventCoherenceFailure, EventConversionError,
+        CommandEvent, AiCommand, EventCoherenceFailure, EventConversionError,
         EventConversionFailures, ExecutionConversionResult, RawCommandEvent, RawCommandExecution,
     },
 };
@@ -42,8 +42,8 @@ struct Narrative {
     narration: String,
 }
 
-fn from_raw_success(raw: Narrative, events: Vec<CommandEvent>) -> CommandExecution {
-    CommandExecution {
+fn from_raw_success(raw: Narrative, events: Vec<CommandEvent>) -> AiCommand {
+    AiCommand {
         events,
         valid: raw.valid,
         reason: match &raw.reason {
@@ -62,7 +62,7 @@ pub async fn convert_raw_execution(
     db: &Database,
 ) -> ExecutionConversionResult {
     if !raw_exec.valid {
-        return ExecutionConversionResult::Success(CommandExecution::from_raw_invalid(raw_exec));
+        return ExecutionConversionResult::Success(AiCommand::from_raw_invalid(raw_exec));
     }
 
     let narrative = Narrative {

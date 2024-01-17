@@ -1,5 +1,5 @@
 use crate::ai::convo::AiPrompt;
-use crate::models::commands::{Command, CommandEvent, EventConversionFailures};
+use crate::models::commands::{ParsedCommand, CommandEvent, EventConversionFailures};
 use crate::models::world::scenes::{Scene, Stage};
 use strum::VariantNames;
 
@@ -194,7 +194,7 @@ fn stage_info(stage: &Stage) -> String {
     info
 }
 
-pub fn execution_prompt(stage: &Stage, cmd: &Command) -> AiPrompt {
+pub fn execution_prompt(stage: &Stage, cmd: &ParsedCommand) -> AiPrompt {
     let scene_info = stage_info(&stage);
 
     let prompt = COMMAND_EXECUTION_PROMPT

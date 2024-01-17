@@ -1,12 +1,13 @@
-use crate::db::Database;
 use crate::io::display;
-use crate::models::commands::CommandExecution;
+use crate::models::commands::{BuiltinCommand, AiCommand, CommandExecution};
 use crate::state::GameState;
+use crate::{commands::CommandExecutor, db::Database};
 use anyhow::Result;
 use reedline::{DefaultPrompt, Reedline, Signal};
 use std::rc::Rc;
 
 pub struct GameLoop {
+    executor: CommandExecutor,
     state: GameState,
     db: Rc<Database>,
     editor: Reedline,
@@ -14,20 +15,25 @@ pub struct GameLoop {
 }
 
 impl GameLoop {
-    pub fn new(state: GameState, db: Rc<Database>) -> GameLoop {
+    pub fn new(state: GameState, db: &Rc<Database>) -> GameLoop {
+        let executor_db = db.clone();
+        let loop_db = db.clone();
+        let executor_logic = state.logic.clone();
+
         GameLoop {
             state,
-            db,
+            db: loop_db,
+            executor: CommandExecutor::new(executor_logic, executor_db),
             editor: Reedline::create(),
             prompt: DefaultPrompt::default(),
         }
     }
 
-    async fn handle_execution(&mut self, execution: CommandExecution) -> Result<()> {
+    async fn handle_ai_command(&mut self, execution: AiCommand) -> Result<()> {
         if !execution.valid {
             display!(
                 "You can't do that: {}",
-                 execution.reason.unwrap_or("for some reason...".to_string())
+                execution.reason.unwrap_or("for some reason...".to_string())
             );
 
             return Ok(());
@@ -42,31 +48,24 @@ impl GameLoop {
         Ok(())
     }
 
-    async fn execute_command(&mut self, cmd: &str) -> Result<CommandExecution> {
-        let stage = &self.state.current_scene;
-        let cached_command = self.db.load_cached_command(cmd, &stage.scene).await?;
+    async fn handle_builtin(&mut self, builtin: BuiltinCommand) -> Result<()> {
+        Ok(())
+    }
 
-        let execution = if let Some(cached) = cached_command {
-            self.state
-                .logic
-                .execute_parsed(stage, &cached.commands)
-                .await?
-        } else {
-            let (cmds_to_cache, execution) = self.state.logic.execute(stage, cmd).await?;
-
-            self.db
-                .cache_command(cmd, &stage.scene, &cmds_to_cache)
-                .await?;
-
-            execution
+    async fn handle_execution(&mut self, execution: CommandExecution) -> Result<()> {
+        match execution {
+            CommandExecution::Builtin(builtin) => self.handle_builtin(builtin).await?,
+            CommandExecution::AiCommand(exec) => self.handle_ai_command(exec).await?,
         };
 
-        Ok(execution)
+        Ok(())
     }
 
     async fn handle_input(&mut self, cmd: &str) -> Result<()> {
         if !cmd.is_empty() {
-            let execution = self.execute_command(cmd).await?;
+            //let execution = self.execute_command(cmd).await?;
+            let mut stage = &self.state.current_scene;
+            let execution = self.executor.execute(&mut stage, cmd).await?;
             self.handle_execution(execution).await?;
         }
 

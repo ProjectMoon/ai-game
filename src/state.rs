@@ -13,7 +13,7 @@ use std::rc::Rc;
 
 pub struct GameState {
     pub start_prompt: String,
-    pub logic: AiLogic,
+    pub logic: Rc<AiLogic>,
     pub db: Rc<Database>,
     pub current_scene: Stage,
 }

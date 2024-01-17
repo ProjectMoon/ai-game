@@ -6,7 +6,7 @@ use super::prompts::{execution_prompts, parsing_prompts, world_prompts};
 
 use crate::kobold_api::Client as KoboldClient;
 use crate::models::coherence::{CoherenceFailure, SceneFix};
-use crate::models::commands::{Command, Commands, RawCommandExecution, VerbsResponse};
+use crate::models::commands::{ParsedCommand, ParsedCommands, RawCommandExecution, VerbsResponse};
 use crate::models::world::raw::{
     ExitSeed, ItemDetails, ItemSeed, PersonDetails, PersonSeed, SceneSeed,
 };
@@ -56,7 +56,7 @@ impl AiGenerator {
         self.person_creation_convo.reset();
     }
 
-    pub async fn parse(&self, cmd: &str) -> Result<Commands> {
+    pub async fn parse(&self, cmd: &str) -> Result<ParsedCommands> {
         // If convo so far is empty, add the instruction header,
         // otherwise only append to existing convo.
         let prompt = match self.parsing_convo.is_empty() {
@@ -64,7 +64,7 @@ impl AiGenerator {
             false => parsing_prompts::continuation_prompt(&cmd),
         };
 
-        let mut cmds: Commands = self.parsing_convo.execute(&prompt).await?;
+        let mut cmds: ParsedCommands = self.parsing_convo.execute(&prompt).await?;
         let verbs = self.find_verbs(cmd).await?;
         self.check_coherence(&verbs, &mut cmds).await?;
         Ok(cmds)
@@ -83,13 +83,13 @@ impl AiGenerator {
             .collect())
     }
 
-    async fn check_coherence(&self, verbs: &[String], commands: &mut Commands) -> Result<()> {
+    async fn check_coherence(&self, verbs: &[String], commands: &mut ParsedCommands) -> Result<()> {
         // let coherence_prompt = parsing_prompts::coherence_prompt();
         // let mut commands: Commands = self.parsing_convo.execute(&coherence_prompt).await?;
 
         // Non-LLM coherence checks: remove empty commands, remove
         // non-verbs, etc.
-        let filtered_commands: Vec<Command> = commands
+        let filtered_commands: Vec<ParsedCommand> = commands
             .clone()
             .commands
             .into_iter()
@@ -102,7 +102,7 @@ impl AiGenerator {
         Ok(())
     }
 
-    pub async fn execute_raw(&self, stage: &Stage, cmd: &Command) -> Result<RawCommandExecution> {
+    pub async fn execute_raw(&self, stage: &Stage, cmd: &ParsedCommand) -> Result<RawCommandExecution> {
         let prompt = execution_prompts::execution_prompt(stage, &cmd);
         let raw_exec: RawCommandExecution = self.execution_convo.execute(&prompt).await?;
         Ok(raw_exec)

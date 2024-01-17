@@ -1,4 +1,4 @@
-use crate::models::commands::{CachedCommand, Command, Commands};
+use crate::models::commands::{CachedParsedCommand, ParsedCommand, ParsedCommands};
 use crate::models::world::scenes::{Scene, Stage, StageOrStub};
 use crate::models::{Content, ContentContainer, Insertable};
 use anyhow::Result;
@@ -388,10 +388,10 @@ impl Database {
         &self,
         raw_cmd: &str,
         scene: &Scene,
-        parsed_cmds: &Commands,
+        parsed_cmds: &ParsedCommands,
     ) -> Result<()> {
         let collection = self.collection(CMD_COLLECTION).await?;
-        let doc = CachedCommand {
+        let doc = CachedParsedCommand {
             raw: raw_cmd.to_string(),
             scene_key: scene._key.as_ref().cloned().expect("scene is missing key"),
             commands: parsed_cmds.clone(),
@@ -405,7 +405,7 @@ impl Database {
         &self,
         raw_cmd: &str,
         scene: &Scene,
-    ) -> Result<Option<CachedCommand>> {
+    ) -> Result<Option<CachedParsedCommand>> {
         let scene_key = scene._key.as_deref();
         let aql = AqlQuery::builder()
             .query(queries::LOAD_CACHED_COMMAND)
