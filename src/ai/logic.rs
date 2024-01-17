@@ -8,12 +8,13 @@ use crate::models::world::people::{Gender, Person, Sex};
 use crate::models::world::raw::{ItemSeed, PersonSeed, SceneSeed};
 use crate::models::world::scenes::{Exit, Scene, SceneStub, Stage};
 use crate::models::{new_uuid_string, Content, ContentContainer, ContentRelation};
+use crate::commands::converter as command_converter;
 use anyhow::{bail, Result};
 use itertools::Itertools;
 use std::rc::Rc;
 
-use super::generator::AiGenerator;
 use super::coherence::AiCoherence;
+use super::generator::AiGenerator;
 
 /// Highest-level AI/LLM construct, which returns fully converted game
 /// objects to us. Basically, call the mid-level `client` to create
@@ -66,7 +67,7 @@ impl AiLogic {
         // Set aside anything with correct event, but wrong parameters.
         // Ask LLM to fix them, if possible
         //TODO make a aiclient::fix_execution
-        let converted = crate::commands::convert_raw_execution(raw_exec, &self.db).await;
+        let converted = command_converter::convert_raw_execution(raw_exec, &self.db).await;
 
         self.generator.reset_commands();
 
