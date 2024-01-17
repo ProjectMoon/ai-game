@@ -12,11 +12,11 @@ pub(crate) fn display_text<S : AsRef<str>>(text: S) {
 
 macro_rules! display {
     ($text:expr) => {
-        crate::io::display_text($text);
+        crate::io::display_text($text)
     };
 
     ($fmt:expr, $text:expr) => {
-        crate::io::display_text(format!($fmt, $text));
+        crate::io::display_text(format!($fmt, $text))
     };
 }
 

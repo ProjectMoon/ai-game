@@ -1,5 +1,5 @@
 use crate::io::display;
-use crate::models::commands::{BuiltinCommand, AiCommand, CommandExecution};
+use crate::models::commands::{AiCommand, BuiltinCommand, CommandExecution};
 use crate::state::GameState;
 use crate::{commands::CommandExecutor, db::Database};
 use anyhow::Result;
@@ -48,7 +48,12 @@ impl GameLoop {
         Ok(())
     }
 
+    // TODO this will probably eventually be moved to its own file.
     async fn handle_builtin(&mut self, builtin: BuiltinCommand) -> Result<()> {
+        match builtin {
+            BuiltinCommand::Look => display!("{}", self.state.current_scene),
+        };
+
         Ok(())
     }
 
