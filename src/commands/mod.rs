@@ -3,7 +3,8 @@ use crate::{
     db::Database,
     models::{
         commands::{
-            BuiltinCommand, AiCommand, ExecutionConversionResult, RawCommandExecution, CommandExecution,
+            AiCommand, BuiltinCommand, CommandExecution, ExecutionConversionResult, ParsedCommand,
+            ParsedCommands, RawCommandExecution,
         },
         world::scenes::Stage,
     },
@@ -13,6 +14,42 @@ use std::rc::Rc;
 
 pub mod builtins;
 pub mod converter;
+
+fn directional_command(direction: &str) -> ParsedCommand {
+    ParsedCommand {
+        verb: "go".to_string(),
+        target: direction.to_string(),
+        location: "direction".to_string(),
+        using: "".to_string(),
+    }
+}
+
+/// Translate certain common commands to commands better understood by
+/// the LLM.
+fn translate(cmd: &str) -> Option<ParsedCommands> {
+    let cmd = match cmd {
+        "n" => Some(directional_command("north")),
+        "s" => Some(directional_command("south")),
+        "e" => Some(directional_command("east")),
+        "w" => Some(directional_command("west")),
+        "nw" => Some(directional_command("northwest")),
+        "ne" => Some(directional_command("northeast")),
+        "sw" => Some(directional_command("southwest")),
+        "se" => Some(directional_command("southeast")),
+        "up" => Some(directional_command("up")),
+        "down" => Some(directional_command("down")),
+        "in" => Some(directional_command("in")),
+        "out" => Some(directional_command("out")),
+        "back" => Some(directional_command("back")),
+        "from" => Some(directional_command("from")),
+        _ => None,
+    };
+
+    cmd.map(|c| ParsedCommands {
+        commands: vec![c],
+        count: 1,
+    })
+}
 
 pub struct CommandExecutor {
     logic: Rc<AiLogic>,
@@ -24,6 +61,23 @@ impl CommandExecutor {
         CommandExecutor { logic, db }
     }
 
+    async fn check_translation_and_cache(
+        &self,
+        stage: &Stage,
+        cmd: &str,
+    ) -> Result<Option<ParsedCommands>> {
+        let maybe_commands = match translate(cmd) {
+            Some(translated_cmds) => Some(translated_cmds),
+            None => self
+                .db
+                .load_cached_command(cmd, &stage.scene)
+                .await?
+                .map(|c| c.commands),
+        };
+
+        Ok(maybe_commands)
+    }
+
     pub async fn execute(&self, stage: &Stage, cmd: &str) -> Result<CommandExecution> {
         CommandExecution::AiCommand(AiCommand::empty());
 
@@ -31,10 +85,9 @@ impl CommandExecutor {
             return Ok(CommandExecution::Builtin(builtin));
         }
 
-        let cached_command = self.db.load_cached_command(cmd, &stage.scene).await?;
-
-        let raw_exec: RawCommandExecution = if let Some(cached) = cached_command {
-            self.logic.execute_parsed(stage, &cached.commands).await?
+        let pre_parsed = self.check_translation_and_cache(stage, cmd).await?;
+        let raw_exec: RawCommandExecution = if let Some(pre_parsed_cmds) = pre_parsed {
+            self.logic.execute_parsed(stage, &pre_parsed_cmds).await?
         } else {
             let (cmds_to_cache, execution) = self.logic.execute(stage, cmd).await?;
 
