@@ -1,4 +1,5 @@
-use crate::models::Insertable;
+use crate::io::display;
+use crate::models::{Entity, Insertable};
 use crate::{
     ai::logic::AiLogic,
     db::Database,
@@ -24,6 +25,7 @@ impl GameState {
         match event {
             CommandEvent::ChangeScene { scene_key } => self.change_scene(&scene_key).await?,
             CommandEvent::Narration(narration) => println!("\n\n{}\n\n", narration),
+            CommandEvent::LookAtEntity { ref entity_key, .. } => self.look_at(entity_key).await?,
             _ => (),
         }
 
@@ -56,6 +58,24 @@ impl GameState {
                 StageOrStub::Stub(stub) => self.current_scene = self.create_from_stub(stub).await?,
             },
             _ => (),
+        }
+
+        Ok(())
+    }
+
+    async fn look_at(&mut self, entity_key: &str) -> Result<()> {
+        let maybe_entity = self
+            .db
+            .load_entity(&self.current_scene.key, entity_key)
+            .await?;
+
+        if let Some(entity) = maybe_entity {
+            match entity {
+                Entity::Item(item) => display!(item.description),
+                Entity::Person(person) => display!(person.description),
+            }
+
+            display!("\n");
         }
 
         Ok(())

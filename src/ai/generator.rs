@@ -65,6 +65,8 @@ impl AiGenerator {
         };
 
         let mut cmds: ParsedCommands = self.parsing_convo.execute(&prompt).await?;
+        cmds.original = cmd.to_owned();
+
         let verbs = self.find_verbs(cmd).await?;
         self.check_coherence(&verbs, &mut cmds).await?;
         Ok(cmds)
@@ -102,8 +104,18 @@ impl AiGenerator {
         Ok(())
     }
 
-    pub async fn execute_raw(&self, stage: &Stage, cmd: &ParsedCommand) -> Result<RawCommandExecution> {
-        let prompt = execution_prompts::execution_prompt(stage, &cmd);
+    pub async fn execute_raw(
+        &self,
+        stage: &Stage,
+        parsed_cmds: &ParsedCommands,
+    ) -> Result<RawCommandExecution> {
+        //TODO handle multiple commands in list
+        if parsed_cmds.commands.is_empty() {
+            return Ok(RawCommandExecution::empty());
+        }
+
+        let cmd = &parsed_cmds.commands[0];
+        let prompt = execution_prompts::execution_prompt(&parsed_cmds.original, stage, &cmd);
         let raw_exec: RawCommandExecution = self.execution_convo.execute(&prompt).await?;
         Ok(raw_exec)
     }

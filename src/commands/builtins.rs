@@ -9,5 +9,5 @@ pub fn check_builtin_command(stage: &Stage, cmd: &str) -> Option<BuiltinCommand>
 }
 
 fn look_command(_stage: &Stage) -> Option<BuiltinCommand> {
-    Some(BuiltinCommand::Look)
+    Some(BuiltinCommand::LookAtScene)
 }

@@ -1,6 +1,7 @@
 use crate::models::new_uuid_string;
 use serde::{Deserialize, Serialize};
-use strum::{EnumString, EnumVariantNames, Display};
+use strum::{Display, EnumString, EnumVariantNames};
+use tabled::Tabled;
 
 use super::super::Insertable;
 

@@ -1,8 +1,8 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 use strum::{EnumString, EnumVariantNames};
 use thiserror::Error;
-
-use super::world::scenes::Stage;
 
 /// Stored in the database to bypass AI 'parsing' when possible.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -14,8 +14,20 @@ pub struct CachedParsedCommand {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ParsedCommands {
+    #[serde(default)]
+    pub original: String, // The original text entered by the player, set by code.
     pub commands: Vec<ParsedCommand>,
     pub count: usize,
+}
+
+impl ParsedCommands {
+    pub fn single(original: &str, cmd: ParsedCommand) -> ParsedCommands {
+        ParsedCommands {
+            original: original.to_owned(),
+            commands: vec![cmd],
+            count: 1,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -74,14 +86,23 @@ pub struct RawCommandEvent {
 #[strum(serialize_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum CommandEvent {
+    // Informational
+    Narration(String),
+    LookAtEntity {
+        entity_key: String,
+        scene_key: String,
+    },
+
+    // Movement-related
     ChangeScene {
         scene_key: String,
     },
+
+    // Player character state
     TakeDamage {
         target: String,
         amount: u32,
     },
-    Narration(String),
     Stand {
         target: String,
     },
@@ -105,10 +126,12 @@ pub enum CommandEvent {
 /// builtin command is only created directly via checking for builtin
 /// commands. These commands may have little or no parameters, as they
 /// are meant for simple, direct commands like looking, movement, etc.
+#[derive(Debug)]
 pub enum BuiltinCommand {
-    Look,
+    LookAtScene,
 }
 
+#[derive(Debug)]
 pub enum CommandExecution {
     Builtin(BuiltinCommand),
     AiCommand(AiCommand),
@@ -143,6 +166,15 @@ impl AiCommand {
             events: vec![],
         }
     }
+
+    pub fn from_events(events: Vec<CommandEvent>) -> AiCommand {
+        AiCommand {
+            valid: true,
+            reason: None,
+            narration: "".to_string(),
+            events,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -152,7 +184,13 @@ pub enum ExecutionConversionResult {
     Failure(EventConversionFailures),
 }
 
-#[derive(Clone, Debug)]
+impl Display for ExecutionConversionResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[derive(Error, Clone, Debug)]
 pub struct EventConversionFailures {
     pub conversion_failures: Vec<EventConversionError>,
     pub coherence_failures: Vec<EventCoherenceFailure>,
@@ -167,6 +205,21 @@ impl EventConversionFailures {
             conversion_failures,
             coherence_failures,
         }
+    }
+}
+
+impl From<Vec<EventCoherenceFailure>> for EventConversionFailures {
+    fn from(value: Vec<EventCoherenceFailure>) -> Self {
+        EventConversionFailures {
+            coherence_failures: value,
+            conversion_failures: vec![],
+        }
+    }
+}
+
+impl Display for EventConversionFailures {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
@@ -186,4 +239,20 @@ pub enum EventCoherenceFailure {
 
     #[error("uncategorized coherence failure: {1}")]
     OtherError(CommandEvent, String),
+}
+
+impl EventCoherenceFailure {
+    /// Consume self to extract the CommandEvent wrapped in this enum.
+    pub fn as_event(self) -> CommandEvent {
+        match self {
+            EventCoherenceFailure::OtherError(event, _) => event,
+            Self::TargetDoesNotExist(event) => event,
+        }
+    }
+}
+
+impl From<EventCoherenceFailure> for CommandEvent {
+    fn from(value: EventCoherenceFailure) -> Self {
+        value.as_event()
+    }
 }

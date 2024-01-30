@@ -3,16 +3,17 @@ use crate::{
     db::Database,
     models::{
         commands::{
-            AiCommand, BuiltinCommand, CommandExecution, ExecutionConversionResult, ParsedCommand,
-            ParsedCommands, RawCommandExecution,
+            AiCommand, CommandEvent, CommandExecution, EventCoherenceFailure,
+            ExecutionConversionResult, ParsedCommand, ParsedCommands, RawCommandExecution,
         },
         world::scenes::Stage,
     },
 };
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use std::rc::Rc;
 
 pub mod builtins;
+pub mod coherence;
 pub mod converter;
 
 fn directional_command(direction: &str) -> ParsedCommand {
@@ -45,10 +46,7 @@ fn translate(cmd: &str) -> Option<ParsedCommands> {
         _ => None,
     };
 
-    cmd.map(|c| ParsedCommands {
-        commands: vec![c],
-        count: 1,
-    })
+    cmd.map(|c| ParsedCommands::single(&format!("go {}", c.target), c))
 }
 
 pub struct CommandExecutor {
@@ -79,8 +77,6 @@ impl CommandExecutor {
     }
 
     pub async fn execute(&self, stage: &Stage, cmd: &str) -> Result<CommandExecution> {
-        CommandExecution::AiCommand(AiCommand::empty());
-
         if let Some(builtin) = builtins::check_builtin_command(stage, cmd) {
             return Ok(CommandExecution::Builtin(builtin));
         }
@@ -91,25 +87,63 @@ impl CommandExecutor {
         } else {
             let (cmds_to_cache, execution) = self.logic.execute(stage, cmd).await?;
 
-            self.db
-                .cache_command(cmd, &stage.scene, &cmds_to_cache)
-                .await?;
+            if execution.valid && cmds_to_cache.commands.len() > 0 {
+                self.db
+                    .cache_command(cmd, &stage.scene, &cmds_to_cache)
+                    .await?;
+            }
 
             execution
         };
 
         let converted = converter::convert_raw_execution(raw_exec, &self.db).await;
 
-        //TODO handle the errored events aside from getting rid of them
-        let execution: AiCommand = match converted {
+        let execution: Result<AiCommand> = match converted {
             ExecutionConversionResult::Success(execution) => Ok(execution),
-            ExecutionConversionResult::PartialSuccess(execution, _) => Ok(execution),
-            ExecutionConversionResult::Failure(failures) => Err(anyhow!(
-                "unhandled command execution failure: {:?}",
-                failures
-            )),
-        }?;
+            ExecutionConversionResult::PartialSuccess(mut execution, failures) => {
+                // TODO also deal with conversion failures
+                // TODO deal with failures to fix incoherent events.
+                // right now we just drop them.
+                let mut fixed_events = self
+                    .fix_incoherence(stage, failures.coherence_failures)
+                    .await
+                    .ok()
+                    .unwrap_or(vec![]);
+
+                execution.events.append(&mut fixed_events);
+                Ok(execution)
+            }
+            ExecutionConversionResult::Failure(failures) => {
+                // TODO also deal with conversion failures
+                // For a complete failure, we want to make sure all
+                // events become coherent.
+                Ok(AiCommand::from_events(
+                    self.fix_incoherence(stage, failures.coherence_failures)
+                        .await?,
+                ))
+            }
+        };
+
+        let execution = execution?;
 
         Ok(CommandExecution::AiCommand(execution))
+    }
+
+    async fn fix_incoherence(
+        &self,
+        stage: &Stage,
+        failures: Vec<EventCoherenceFailure>,
+    ) -> Result<Vec<CommandEvent>> {
+        println!("Attempting to fix {} incoherent events", failures.len());
+        let fixer = coherence::CommandCoherence::new(&self.logic, &self.db, stage);
+
+        // TODO should do something w/ partial failures.
+        let events = match fixer.fix_incoherent_events(failures).await {
+            ExecutionConversionResult::Success(AiCommand { events, .. }) => Ok(events),
+            ExecutionConversionResult::PartialSuccess(AiCommand { events, .. }, _) => Ok(events),
+            ExecutionConversionResult::Failure(errs) => Err(errs),
+        }?;
+
+        Ok(events)
     }
 }

@@ -4,7 +4,7 @@ use game_loop::GameLoop;
 use ai::logic::AiLogic;
 use models::world::scenes::{root_scene_id, Stage};
 use state::GameState;
-use std::{io::stdout, rc::Rc, time::Duration};
+use std::{io::stdout, rc::Rc, time::Duration, str::FromStr};
 
 use arangors::Connection;
 

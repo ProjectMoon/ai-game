@@ -1,7 +1,76 @@
 use crate::ai::convo::AiPrompt;
-use crate::models::commands::{ParsedCommand, CommandEvent, EventConversionFailures};
-use crate::models::world::scenes::{Scene, Stage};
+use crate::models::commands::{CommandEvent, EventConversionFailures, ParsedCommand};
+use crate::models::world::items::Item;
+use crate::models::world::people::Person;
+use crate::models::world::scenes::{Exit, Prop, Scene, Stage};
+use crate::models::Insertable;
+use itertools::Itertools;
 use strum::VariantNames;
+use tabled::settings::Style;
+use tabled::{Table, Tabled};
+
+const UNKNOWN: &'static str = "unknown";
+const PERSON: &'static str = "person";
+const ITEM: &'static str = "item";
+const PROP: &'static str = "prop";
+const NO_KEY: &'static str = "n/a";
+
+#[derive(Tabled)]
+struct EntityTableRow<'a> {
+    name: &'a str,
+    #[tabled(rename = "type")]
+    entity_type: &'a str,
+    key: &'a str,
+}
+
+impl<'a> From<&'a Person> for EntityTableRow<'a> {
+    fn from(value: &'a Person) -> Self {
+        EntityTableRow {
+            name: &value.name,
+            key: value.key().unwrap_or(UNKNOWN),
+            entity_type: PERSON,
+        }
+    }
+}
+
+impl<'a> From<&'a Item> for EntityTableRow<'a> {
+    fn from(value: &'a Item) -> Self {
+        EntityTableRow {
+            name: &value.name,
+            key: value.key().unwrap_or(UNKNOWN),
+            entity_type: ITEM,
+        }
+    }
+}
+
+impl<'a> From<&'a Prop> for EntityTableRow<'a> {
+    fn from(value: &'a Prop) -> Self {
+        EntityTableRow {
+            name: &value.name,
+            entity_type: PROP,
+            key: NO_KEY,
+        }
+    }
+}
+
+#[derive(Tabled)]
+pub struct ExitTableRow<'a> {
+    pub name: &'a str,
+    pub direction: &'a str,
+    pub scene_key: &'a str,
+    pub region: &'a str,
+}
+
+impl<'a> From<&'a Exit> for ExitTableRow<'a> {
+    fn from(value: &'a Exit) -> Self {
+        ExitTableRow {
+            name: &value.name,
+            direction: &value.direction,
+            scene_key: &value.scene_key,
+            region: &value.region,
+        }
+    }
+}
 
 const COMMAND_EXECUTION_BNF: &'static str = r#"
 root ::= CommandExecution
@@ -51,6 +120,9 @@ The following events can be generated:
  - `change_scene`: The player's current scene is changed.
    - `appliesTo` must be set to `player`.
    - `parameter` must be the Scene Key of the new scene.
+ - `look_at_entity`: The player is looking at an entity--a person, prop, or item in the scene.
+   - `appliesTo` is the Scene Key of the current scene.
+   - `parameter` is the Entity Key of the entity being looked at.
  - `take_damage`: The target of the event takes an amount of damage.
    - `appliesTo` must be the target taking damage (player, NPC, item, prop, or other thing in the scene)
    - `parameter` must be the amount of damage taken. This value must be a positive integer.
@@ -73,13 +145,19 @@ The following events can be generated:
    - `appliesTo` must be the target in the scene that the event would apply to, if it was a valid event.
    - `parameter` should be a value that theoretically makes sense, if this event was a valid event.
 
+Check that the events make sense and are generated correctly, given the original command.
+
+The original command is the raw text entered by the player.
+
+**Original Command:** `{ORIGINAL_COMMAND}`
+
 {SCENE_INFO}
 
 **Player Command**:
- - Action: `{}`
- - Target: `{}`
- - Location: `{}`
- - Using: `{}`
+ - Action: `{ACTION}`
+ - Target: `{TARGET}`
+ - Location: `{LOCATION}`
+ - Using: `{USING}`
 [/INST]
 "#;
 
@@ -110,6 +188,12 @@ const SCENE_EXIT_INFO: &'static str = r#"
  - Scene Location: `{EXIT_LOCATION}`
 "#;
 
+const SCENE_PERSON_INFO: &'static str = r#"
+**Person:**:
+ - Name: `{PERSON_NAME}`
+ - Entity Key: `{PERSON_KEY}`
+"#;
+
 fn unrecognized_event_solution(event_name: &str) -> String {
     let valid_events = CommandEvent::VARIANTS
         .iter()
@@ -123,10 +207,9 @@ fn unrecognized_event_solution(event_name: &str) -> String {
 }
 
 fn stage_info(stage: &Stage) -> String {
-    let scene_description = "**Scene Description:** ".to_string() + &stage.scene.description;
+    let mut info = "# SCENE INFORMATION\n\n".to_string();
 
-    let mut info = "**Scene Information:**\n".to_string();
-
+    info.push_str("## CURRENT SCENE INFORMATION\n\n");
     info.push_str(" - Key: ");
     info.push_str(&format!("`{}`", stage.key));
     info.push_str("\n");
@@ -137,72 +220,38 @@ fn stage_info(stage: &Stage) -> String {
 
     info.push_str(" - Location: ");
     info.push_str(&stage.scene.region);
-    info.push_str("\n");
-
-    let people: String = stage
-        .people
-        .iter()
-        .map(|p| format!(" - {}", p.name))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    info.push_str("**People:**\n");
-    info.push_str(&people);
-    info.push_str("\n");
-
-    let items: String = stage
-        .items
-        .iter()
-        .map(|i| format!(" - {} ({})", i.name, i.category))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    info.push_str("**Items:**\n");
-    info.push_str(&items);
-    info.push_str("\n");
-
-    let props: String = stage
-        .scene
-        .props
-        .iter()
-        .map(|p| format!(" - {}", p.name))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    info.push_str("**Props:**\n");
-    info.push_str(&props);
     info.push_str("\n\n");
 
-    let exits: String = stage
-        .scene
-        .exits
-        .iter()
-        .map(|e| {
-            SCENE_EXIT_INFO
-                .replacen("{EXIT_NAME}", &e.name, 1)
-                .replacen("{DIRECTION}", &e.direction, 1)
-                .replacen("{SCENE_KEY}", &e.scene_key, 1)
-                .replacen("{EXIT_LOCATION}", &e.region, 1)
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n");
+    let people = stage.people.iter().map_into::<EntityTableRow>();
+    let items = stage.items.iter().map_into::<EntityTableRow>();
+    let props = stage.scene.props.iter().map_into::<EntityTableRow>();
+    let entities = people.chain(items).chain(props);
 
-    info.push_str(&exits);
+    let mut entities_table = Table::new(entities);
+    entities_table.with(Style::markdown());
 
-    info.push_str(&scene_description);
+    info.push_str("## ENTITIES\n\n");
+    info.push_str(&entities_table.to_string());
+    info.push_str("\n\n");
+
+    let mut exits = Table::new(stage.scene.exits.iter().map_into::<ExitTableRow>());
+    exits.with(Style::markdown());
+    info.push_str("## EXITS\n\n");
+    info.push_str(&exits.to_string());
 
     info
 }
 
-pub fn execution_prompt(stage: &Stage, cmd: &ParsedCommand) -> AiPrompt {
+pub fn execution_prompt(original_cmd: &str, stage: &Stage, cmd: &ParsedCommand) -> AiPrompt {
     let scene_info = stage_info(&stage);
 
     let prompt = COMMAND_EXECUTION_PROMPT
         .replacen("{SCENE_INFO}", &scene_info, 1)
-        .replacen("{}", &cmd.verb, 1)
-        .replacen("{}", &cmd.target, 1)
-        .replacen("{}", &cmd.location, 1)
-        .replacen("{}", &cmd.using, 1);
+        .replacen("{ORIGINAL_COMMAND}", &original_cmd, 1)
+        .replacen("{ACTION}", &cmd.verb, 1)
+        .replacen("{TARGET}", &cmd.target, 1)
+        .replacen("{LOCATION}", &cmd.location, 1)
+        .replacen("{USING}", &cmd.using, 1);
 
     AiPrompt::new_with_grammar_and_size(&prompt, COMMAND_EXECUTION_BNF, 512)
 }

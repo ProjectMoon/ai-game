@@ -79,6 +79,9 @@ fn is_duplicate_recorded(failures: &[CoherenceFailure], exit: &Exit) -> bool {
     false
 }
 
+/// This is currently for handling coherence when CREATING stuff in
+/// the world. It's not doing coherence to fix things like command
+/// execution.
 pub(super) struct AiCoherence {
     generator: Rc<AiGenerator>,
 }

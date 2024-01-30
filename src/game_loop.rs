@@ -1,5 +1,7 @@
 use crate::io::display;
-use crate::models::commands::{AiCommand, BuiltinCommand, CommandExecution};
+use crate::models::commands::{
+    AiCommand, BuiltinCommand, CommandExecution, ExecutionConversionResult, EventConversionFailures,
+};
 use crate::state::GameState;
 use crate::{commands::CommandExecutor, db::Database};
 use anyhow::Result;
@@ -51,26 +53,29 @@ impl GameLoop {
     // TODO this will probably eventually be moved to its own file.
     async fn handle_builtin(&mut self, builtin: BuiltinCommand) -> Result<()> {
         match builtin {
-            BuiltinCommand::Look => display!("{}", self.state.current_scene),
+            BuiltinCommand::LookAtScene => display!("{}", self.state.current_scene),
         };
 
         Ok(())
     }
 
-    async fn handle_execution(&mut self, execution: CommandExecution) -> Result<()> {
-        match execution {
-            CommandExecution::Builtin(builtin) => self.handle_builtin(builtin).await?,
-            CommandExecution::AiCommand(exec) => self.handle_ai_command(exec).await?,
-        };
+    async fn handle_execution(&mut self, execution: Result<CommandExecution>) -> Result<()> {
+        if let Ok(execution) = execution {
+            match execution {
+                CommandExecution::Builtin(builtin) => self.handle_builtin(builtin).await?,
+                CommandExecution::AiCommand(exec) => self.handle_ai_command(exec).await?,
+            };
+        } else {
+            display!("{}", execution.unwrap_err());
+        }
 
         Ok(())
     }
 
     async fn handle_input(&mut self, cmd: &str) -> Result<()> {
         if !cmd.is_empty() {
-            //let execution = self.execute_command(cmd).await?;
             let mut stage = &self.state.current_scene;
-            let execution = self.executor.execute(&mut stage, cmd).await?;
+            let execution = self.executor.execute(&mut stage, cmd).await;
             self.handle_execution(execution).await?;
         }
 

@@ -1,4 +1,5 @@
 use crate::models::new_uuid_string;
+use tabled::Tabled;
 
 use super::super::Insertable;
 use serde::{Deserialize, Serialize};

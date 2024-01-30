@@ -1,6 +1,7 @@
 use self::world::items::Item;
 use self::world::people::Person;
 use self::world::scenes::{Scene, SceneStub};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 // Has to come before any module declarations!
@@ -38,9 +39,9 @@ macro_rules! impl_insertable {
     };
 }
 
+pub mod coherence;
 pub mod commands;
 pub mod world;
-pub mod coherence;
 
 pub fn new_uuid_string() -> String {
     let uuid = Uuid::now_v7();
@@ -189,5 +190,58 @@ impl Insertable for Content {
         }
 
         old_key
+    }
+}
+
+/// An entity in a scene that can be loaded from the database. Similar
+/// to but different from Content/ContentRelation.
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum Entity {
+    Person(world::people::Person),
+    Item(world::items::Item),
+}
+
+impl Insertable for Entity {
+    fn id(&self) -> Option<&str> {
+        match self {
+            Entity::Person(person) => person.id(),
+            Entity::Item(item) => item.id(),
+        }
+    }
+
+    fn key(&self) -> Option<&str> {
+        match self {
+            Entity::Person(person) => person.key(),
+            Entity::Item(item) => item.key(),
+        }
+    }
+
+    fn set_id(&mut self, id: String) -> Option<String> {
+        match self {
+            Entity::Person(person) => person.set_id(id),
+            Entity::Item(item) => item.set_id(id),
+        }
+    }
+
+    fn set_key(&mut self, key: String) -> Option<String> {
+        match self {
+            Entity::Person(person) => person.set_key(key),
+            Entity::Item(item) => item.set_key(key),
+        }
+    }
+
+    fn take_id(&mut self) -> Option<String> {
+        match self {
+            Entity::Person(person) => person.take_id(),
+            Entity::Item(item) => item.take_id(),
+        }
+    }
+
+    fn take_key(&mut self) -> Option<String> {
+        match self {
+            Entity::Person(person) => person.take_key(),
+            Entity::Item(item) => item.take_key(),
+        }
     }
 }

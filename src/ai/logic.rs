@@ -54,20 +54,7 @@ impl AiLogic {
         stage: &Stage,
         parsed_cmd: &ParsedCommands,
     ) -> Result<RawCommandExecution> {
-        //TODO handle multiple commands in list
-        if parsed_cmd.commands.is_empty() {
-            return Ok(RawCommandExecution::empty());
-        }
-
-        let cmd = &parsed_cmd.commands[0];
-        let raw_exec: RawCommandExecution = self.generator.execute_raw(stage, cmd).await?;
-
-        // Coherence check:
-        // Set aside any events that are not in the enum
-        // Set aside anything with correct event, but wrong parameters.
-        // Ask LLM to fix them, if possible
-        //TODO make a aiclient::fix_execution
-
+        let raw_exec: RawCommandExecution = self.generator.execute_raw(stage, parsed_cmd).await?;
         self.generator.reset_commands();
         Ok(raw_exec)
     }

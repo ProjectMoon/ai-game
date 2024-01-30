@@ -1,8 +1,9 @@
+use crate::models::world::items::Item;
 use crate::models::world::people::Person;
 use crate::models::{new_uuid_string, Insertable};
-use crate::{db::Key, models::world::items::Item};
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
+use tabled::Tabled;
 
 use super::raw::{ExitSeed, PropSeed};
 

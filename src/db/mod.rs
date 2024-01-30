@@ -1,6 +1,6 @@
 use crate::models::commands::{CachedParsedCommand, ParsedCommand, ParsedCommands};
 use crate::models::world::scenes::{Scene, Stage, StageOrStub};
-use crate::models::{Content, ContentContainer, Insertable};
+use crate::models::{Content, ContentContainer, Insertable, Entity};
 use anyhow::Result;
 use arangors::document::options::InsertOptions;
 use arangors::graph::{EdgeDefinition, Graph};
@@ -382,6 +382,34 @@ impl Database {
             .len();
 
         Ok(stage_count > 0)
+    }
+
+    pub async fn entity_exists(&self, scene_key: &str, entity_key: &str) -> Result<bool> {
+        let mut vars = HashMap::new();
+
+        vars.insert("@scene_collection", SCENE_COLLECTION.into());
+        vars.insert("scene_key", to_json_value(scene_key).unwrap());
+        vars.insert("entity_key", to_json_value(entity_key).unwrap());
+
+        let db = self.db().await?;
+        let entity_count = db
+            .aql_bind_vars::<JsonValue>(queries::LOAD_ENTITY, vars)
+            .await?
+            .len();
+
+        Ok(entity_count > 0)
+    }
+
+    pub async fn load_entity(&self, scene_key: &str, entity_key: &str) -> Result<Option<Entity>> {
+        let aql = AqlQuery::builder()
+            .query(queries::LOAD_ENTITY)
+            .bind_var("@scene_collection", SCENE_COLLECTION)
+            .bind_var("scene_key", to_json_value(scene_key)?)
+            .bind_var("entity_key", to_json_value(entity_key)?)
+            .build();
+
+        let results = self.db().await?.aql_query(aql).await?;
+        Ok(take_first(results))
     }
 
     pub async fn cache_command(

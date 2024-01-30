@@ -1,7 +1,7 @@
 use crate::{
     db::Database,
     models::commands::{
-        CommandEvent, AiCommand, EventCoherenceFailure, EventConversionError,
+        AiCommand, CommandEvent, EventCoherenceFailure, EventConversionError,
         EventConversionFailures, ExecutionConversionResult, RawCommandEvent, RawCommandExecution,
     },
 };
@@ -9,6 +9,7 @@ use anyhow::Result;
 use futures::stream::{self, StreamExt, TryStreamExt};
 use itertools::{Either, Itertools};
 use std::convert::TryFrom;
+use super::coherence::strip_prefixes;
 
 use strum::VariantNames;
 
@@ -50,10 +51,10 @@ fn from_raw_success(raw: Narrative, events: Vec<CommandEvent>) -> AiCommand {
             Some(reason) if !raw.valid && reason.is_empty() => {
                 Some("invalid for unknown reason".to_string())
             }
-            Some(_) if !raw.valid => raw.reason.clone(),
+            Some(_) if !raw.valid => raw.reason,
             _ => None,
         },
-        narration: raw.narration.clone(),
+        narration: raw.narration,
     }
 }
 
@@ -118,35 +119,34 @@ fn deserialize_recognized_event(
     let event_name = event_name.as_str();
 
     match event_name {
+        // informational-related
+        "narration" => Ok(CommandEvent::Narration(raw_event.parameter)),
+        "look_at_entity" => Ok(CommandEvent::LookAtEntity {
+            entity_key: strip_prefixes(raw_event.parameter),
+            scene_key: strip_prefixes(raw_event.applies_to),
+        }),
+
         // scene-related
         "change_scene" => Ok(CommandEvent::ChangeScene {
-            scene_key: raw_event
-                .parameter
-                .strip_prefix("scenes/") // Mini coherence check
-                .map(String::from)
-                .unwrap_or(raw_event.parameter)
-                .clone(),
+            scene_key: strip_prefixes(raw_event.parameter),
         }),
 
         // bodily position-related
         "stand" => Ok(CommandEvent::Stand {
-            target: raw_event.applies_to,
+            target: strip_prefixes(raw_event.applies_to),
         }),
         "sit" => Ok(CommandEvent::Sit {
-            target: raw_event.applies_to,
+            target: strip_prefixes(raw_event.applies_to),
         }),
         "prone" => Ok(CommandEvent::Prone {
-            target: raw_event.applies_to,
+            target: strip_prefixes(raw_event.applies_to),
         }),
         "crouch" => Ok(CommandEvent::Crouch {
-            target: raw_event.applies_to,
+            target: strip_prefixes(raw_event.applies_to),
         }),
 
         // combat-related
         "take_damage" => deserialize_take_damage(raw_event),
-
-        // miscellaneous
-        "narration" => Ok(CommandEvent::Narration(raw_event.parameter)),
 
         // unrecognized
         _ => Err(EventConversionError::UnrecognizedEvent(raw_event)),
@@ -158,18 +158,28 @@ fn deserialize_take_damage(
 ) -> Result<CommandEvent, EventConversionError> {
     match raw_event.parameter.parse::<u32>() {
         Ok(dmg) => Ok(CommandEvent::TakeDamage {
-            target: raw_event.applies_to,
+            target: strip_prefixes(raw_event.applies_to),
             amount: dmg,
         }),
         Err(_) => Err(EventConversionError::InvalidParameter(raw_event)),
     }
 }
 
-async fn validate_event_coherence<'a>(
+pub(super) async fn validate_event_coherence<'a>(
     db: &Database,
     event: CommandEvent,
 ) -> std::result::Result<CommandEvent, EventCoherenceFailure> {
     match event {
+        CommandEvent::LookAtEntity {
+            ref entity_key,
+            ref scene_key,
+        } => match db.entity_exists(&scene_key, &entity_key).await {
+            Ok(exists) => match exists {
+                true => Ok(event),
+                false => Err(invalid_converted_event(event).unwrap()),
+            },
+            Err(err) => Err(invalid_converted_event_because_err(event, err)),
+        },
         CommandEvent::ChangeScene { ref scene_key } => match db.stage_exists(&scene_key).await {
             Ok(exists) => match exists {
                 true => Ok(event),
@@ -185,6 +195,7 @@ async fn validate_event_coherence<'a>(
 /// information contained in the response is not valid.
 fn invalid_converted_event(event: CommandEvent) -> Option<EventCoherenceFailure> {
     match event {
+        CommandEvent::LookAtEntity { .. } => Some(EventCoherenceFailure::TargetDoesNotExist(event)),
         CommandEvent::ChangeScene { .. } => Some(EventCoherenceFailure::TargetDoesNotExist(event)),
         _ => None,
     }
