@@ -14,7 +14,6 @@ use std::rc::Rc;
 use uuid::Uuid;
 
 type CoherenceResult = Result<CommandEvent, EventCoherenceFailure>;
-type OptionalCoherenceResult = Result<Option<CommandEvent>, EventCoherenceFailure>;
 
 pub struct CommandCoherence<'a> {
     logic: Rc<AiLogic>,
@@ -101,7 +100,7 @@ impl CommandCoherence<'_> {
     }
 }
 
-/// Directly mutates an entity and scene key to make scene, if
+/// Directly mutates an entity and scene key to make sense, if
 /// possible.
 async fn cohere_scene_and_entity(
     db: &Database,
