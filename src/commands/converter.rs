@@ -1,3 +1,5 @@
+use super::coherence::strip_prefixes;
+use super::partition;
 use crate::{
     db::Database,
     models::commands::{
@@ -9,7 +11,6 @@ use anyhow::Result;
 use futures::stream::{self, StreamExt, TryStreamExt};
 use itertools::{Either, Itertools};
 use std::convert::TryFrom;
-use super::coherence::strip_prefixes;
 
 use strum::VariantNames;
 
@@ -85,15 +86,9 @@ pub async fn convert_raw_execution(
         });
 
     // Coherence validation of converted events.
-    let (successes, incoherent_events): (Vec<_>, Vec<_>) = stream::iter(converted.into_iter())
-        .then(|event| validate_event_coherence(db, event))
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .partition_map(|res| match res {
-            Ok(event) => Either::Left(event),
-            Err(err) => Either::Right(err),
-        });
+    let (successes, incoherent_events) = partition!(
+        stream::iter(converted.into_iter()).then(|event| validate_event_coherence(db, event))
+    );
 
     let failure_len = conversion_failures.len() + incoherent_events.len();
 

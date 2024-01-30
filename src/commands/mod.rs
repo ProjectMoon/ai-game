@@ -12,6 +12,27 @@ use crate::{
 use anyhow::Result;
 use std::rc::Rc;
 
+/// Splits up a stream of results into successes and failures.
+macro_rules! partition {
+    ($stream: expr) => {
+        $stream
+            .fold(
+                (vec![], vec![]),
+                |(mut successes, mut failures), res| async {
+                    match res {
+                        Ok(event) => successes.push(event),
+                        Err(err) => failures.push(err),
+                    };
+
+                    (successes, failures)
+                },
+            )
+            .await
+    };
+}
+
+pub(self) use partition;
+
 pub mod builtins;
 pub mod coherence;
 pub mod converter;

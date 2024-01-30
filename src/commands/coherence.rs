@@ -1,4 +1,5 @@
 use super::converter::validate_event_coherence;
+use super::partition;
 use crate::{
     ai::logic::AiLogic,
     db::Database,
@@ -38,20 +39,9 @@ impl CommandCoherence<'_> {
         &self,
         failures: Vec<EventCoherenceFailure>,
     ) -> ExecutionConversionResult {
-        let (successes, failures): (Vec<_>, Vec<_>) = stream::iter(failures.into_iter())
-            .then(|failure| self.cohere_event(failure))
-            .fold(
-                (vec![], vec![]),
-                |(mut successes, mut failures), res| async {
-                    match res {
-                        Ok(event) => successes.push(event),
-                        Err(err) => failures.push(err),
-                    };
-
-                    (successes, failures)
-                },
-            )
-            .await;
+        let (successes, failures) = partition!(
+            stream::iter(failures.into_iter()).then(|failure| self.cohere_event(failure))
+        );
 
         // TODO we need to use LLM on events that have failed non-LLM coherence.
 
@@ -68,7 +58,7 @@ impl CommandCoherence<'_> {
     }
 
     async fn cohere_event(&self, failure: EventCoherenceFailure) -> CoherenceResult {
-        let event = async {
+        let event_fix = async {
             match failure {
                 EventCoherenceFailure::TargetDoesNotExist(event) => {
                     self.fix_target_does_not_exist(event).await
@@ -77,7 +67,7 @@ impl CommandCoherence<'_> {
             }
         };
 
-        event
+        event_fix
             .and_then(|e| validate_event_coherence(&self.db, e))
             .await
     }
