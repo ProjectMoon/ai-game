@@ -4,7 +4,8 @@ use crate::{
     models::{
         commands::{
             AiCommand, CommandEvent, CommandExecution, EventCoherenceFailure,
-            ExecutionConversionResult, ParsedCommand, ParsedCommands, RawCommandExecution,
+            EventConversionFailure, ExecutionConversionResult, ParsedCommand, ParsedCommands,
+            RawCommandExecution,
         },
         world::scenes::Stage,
     },
@@ -119,33 +120,15 @@ impl CommandExecutor {
 
         let converted = converter::convert_raw_execution(raw_exec, &self.db).await;
 
-        let execution: Result<AiCommand> = match converted {
-            ExecutionConversionResult::Success(execution) => Ok(execution),
-            ExecutionConversionResult::PartialSuccess(mut execution, failures) => {
+        let execution: AiCommand = match converted {
+            Ok(ai_command) => Ok(ai_command),
+            Err(failure) => {
                 // TODO also deal with conversion failures
                 // TODO deal with failures to fix incoherent events.
                 // right now we just drop them.
-                let mut fixed_events = self
-                    .fix_incoherence(stage, failures.coherence_failures)
-                    .await
-                    .ok()
-                    .unwrap_or(vec![]);
-
-                execution.events.append(&mut fixed_events);
-                Ok(execution)
+                self.fix_incoherence(stage, failure).await
             }
-            ExecutionConversionResult::Failure(failures) => {
-                // TODO also deal with conversion failures
-                // For a complete failure, we want to make sure all
-                // events become coherent.
-                Ok(AiCommand::from_events(
-                    self.fix_incoherence(stage, failures.coherence_failures)
-                        .await?,
-                ))
-            }
-        };
-
-        let execution = execution?;
+        }?;
 
         Ok(CommandExecution::AiCommand(execution))
     }
@@ -153,18 +136,15 @@ impl CommandExecutor {
     async fn fix_incoherence(
         &self,
         stage: &Stage,
-        failures: Vec<EventCoherenceFailure>,
-    ) -> Result<Vec<CommandEvent>> {
-        println!("Attempting to fix {} incoherent events", failures.len());
-        let fixer = coherence::CommandCoherence::new(&self.logic, &self.db, stage);
+        failure: EventConversionFailure,
+    ) -> std::result::Result<AiCommand, EventConversionFailure> {
+        if let EventConversionFailure::CoherenceFailure(coherence_failure) = failure {
+            let fixer = coherence::CommandCoherence::new(&self.logic, &self.db, stage);
 
-        // TODO should do something w/ partial failures.
-        let events = match fixer.fix_incoherent_events(failures).await {
-            ExecutionConversionResult::Success(AiCommand { events, .. }) => Ok(events),
-            ExecutionConversionResult::PartialSuccess(AiCommand { events, .. }, _) => Ok(events),
-            ExecutionConversionResult::Failure(errs) => Err(errs),
-        }?;
-
-        Ok(events)
+            // TODO should do something w/ partial failures.
+            fixer.fix_incoherent_event(coherence_failure).await
+        } else {
+            Err(failure)
+        }
     }
 }

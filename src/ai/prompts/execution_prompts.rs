@@ -1,5 +1,5 @@
 use crate::ai::convo::AiPrompt;
-use crate::models::commands::{CommandEvent, EventConversionFailures, ParsedCommand};
+use crate::models::commands::{CommandEvent, EventConversionFailure, ParsedCommand};
 use crate::models::world::items::Item;
 use crate::models::world::people::Person;
 use crate::models::world::scenes::{Exit, Prop, Scene, Stage};
@@ -75,8 +75,7 @@ impl<'a> From<&'a Exit> for ExitTableRow<'a> {
 const COMMAND_EXECUTION_BNF: &'static str = r#"
 root ::= CommandExecution
 CommandEvent ::= "{"   ws   "\"eventName\":"   ws   string   ","   ws   "\"appliesTo\":"   ws   string   ","   ws   "\"parameter\":"   ws   string   "}"
-CommandEventlist ::= "[]" | "["   ws   CommandEvent   (","   ws   CommandEvent)*   "]"
-CommandExecution ::= "{"   ws   "\"valid\":"   ws   boolean   ","   ws   "\"reason\":"   ws   string   ","   ws   "\"narration\":"   ws   string   ","   ws   "\"events\":"   ws   CommandEventlist   "}"
+CommandExecution ::= "{"   ws   "\"valid\":"   ws   boolean   ","   ws   "\"reason\":"   ws   string   ","   ws   "\"narration\":"   ws   string   ","   ws   "\"event\":"   ws   CommandEvent   "}"
 CommandExecutionlist ::= "[]" | "["   ws   CommandExecution   (","   ws   CommandExecution)*   "]"
 string ::= "\""   ([^"]*)   "\""
 boolean ::= "true" | "false"
@@ -113,16 +112,17 @@ The `events` field must be filled with entries if the command is valid. It is a 
  - `name`: The name of the event, which can be one of the ones detailed below.
  - `appliesTo`: The player, item, NPC, or other entity in the scene.
    - The event applies only to one target.
-   - The `appliesTo` field should be the `key` of the target. If no key was provided, use the target's name instead.
+   - The `appliesTo` field should be the `key` of the target. If no key was provided, use the target's name instead. The `key` is usualy a UUID.
  - `parameter`: Optional parameter with a string value that will be parsed. Parameters allowed depend on the type of event, and are detailed below.
 
 The following events can be generated:
  - `change_scene`: The player's current scene is changed.
    - `appliesTo` must be set to `player`.
-   - `parameter` must be the Scene Key of the new scene.
+   - `parameter` must be the Scene Key of the new scene. This is a UUID.
  - `look_at_entity`: The player is looking at an entity--a person, prop, or item in the scene.
-   - `appliesTo` is the Scene Key of the current scene.
-   - `parameter` is the Entity Key of the entity being looked at.
+   - `appliesTo` is the key of the person, prop, or item being looked at.
+   - `appliesTo` must NOT be the **NAME** of the entity. It **MUST** be the UUID key.
+   - `parameter` is irrelevant for this event.
  - `take_damage`: The target of the event takes an amount of damage.
    - `appliesTo` must be the target taking damage (player, NPC, item, prop, or other thing in the scene)
    - `parameter` must be the amount of damage taken. This value must be a positive integer.
@@ -144,6 +144,8 @@ The following events can be generated:
  - `unrecognized`: For any event that is not in the list above, and is thus considered invalid. This event will be recorded for analysis.
    - `appliesTo` must be the target in the scene that the event would apply to, if it was a valid event.
    - `parameter` should be a value that theoretically makes sense, if this event was a valid event.
+
+Make sure the `appliesTo` field and `parameter` field are UUIDs, if the event requires it.
 
 Check that the events make sense and are generated correctly, given the original command.
 
@@ -256,6 +258,6 @@ pub fn execution_prompt(original_cmd: &str, stage: &Stage, cmd: &ParsedCommand) 
     AiPrompt::new_with_grammar_and_size(&prompt, COMMAND_EXECUTION_BNF, 512)
 }
 
-pub fn fix_prompt(scene: &Scene, failures: &EventConversionFailures) -> AiPrompt {
+pub fn fix_prompt(scene: &Scene, failures: &EventConversionFailure) -> AiPrompt {
     AiPrompt::new("")
 }

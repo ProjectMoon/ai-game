@@ -24,23 +24,40 @@ pub const LOAD_STAGE: &'static str = r#"
     }
 "#;
 
+pub const LOAD_ENTITY_IN_SCENE: &'static str = r#"
+  LET entities = (
+      FOR scene IN @@scene_collection
+          FILTER scene._key == @scene_key
+          LET occupants = (FOR v, edge IN OUTBOUND scene._id GRAPH 'world'
+            FILTER edge.relation == "scene-has-person" and v._key == @entity_key
+            RETURN MERGE({ "type": "Person"}, v))
+
+          LET items = (FOR v, edge IN OUTBOUND scene._id GRAPH 'world'
+            FILTER edge.relation == "item-located-at" and v._key == @entity_key
+            RETURN MERGE({ "type": "Item" }, v ))
+
+          RETURN FIRST(APPEND(occupants, items)))
+
+  FOR ent in entities
+      FILTER ent != null
+  RETURN ent
+"#;
+
 pub const LOAD_ENTITY: &'static str = r#"
-LET entities = (
-    FOR scene IN @@scene_collection
-        FILTER scene._key == @scene_key
-        LET occupants = (FOR v, edge IN OUTBOUND scene._id GRAPH 'world'
-          FILTER edge.relation == "scene-has-person" and v._key == @entity_key
-          RETURN MERGE({ "type": "Person"}, v))
+  LET entities = (
+          LET people = (FOR person in people
+            FILTER person._key == @entity_key
+            RETURN MERGE({ "type": "Person"}, person))
 
-        LET items = (FOR v, edge IN OUTBOUND scene._id GRAPH 'world'
-          FILTER edge.relation == "item-located-at" and v._key == @entity_key
-          RETURN MERGE({ "type": "Item" }, v ))
+          LET items = (FOR item in items
+            FILTER item._key == @entity_key
+            RETURN MERGE({ "type": "Item" }, item))
 
-        RETURN FIRST(APPEND(occupants, items)))
+          RETURN FIRST(APPEND(people, items)))
 
-FOR ent in entities
-    FILTER ent != null
-RETURN ent
+  FOR ent in entities
+      FILTER ent != null
+  RETURN ent
 "#;
 
 pub const UPSERT_SCENE: &'static str = r#"

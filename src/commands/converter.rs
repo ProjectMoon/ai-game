@@ -1,61 +1,35 @@
 use super::coherence::strip_prefixes;
-use super::partition;
 use crate::{
     db::Database,
     models::commands::{
-        AiCommand, CommandEvent, EventCoherenceFailure, EventConversionError,
-        EventConversionFailures, ExecutionConversionResult, RawCommandEvent, RawCommandExecution,
+        AiCommand, CommandEvent, EventCoherenceFailure, EventParsingFailure,
+        ExecutionConversionResult, Narrative, RawCommandEvent, RawCommandExecution,
     },
 };
 use anyhow::Result;
-use futures::stream::{self, StreamExt, TryStreamExt};
-use itertools::{Either, Itertools};
 use std::convert::TryFrom;
 
 use strum::VariantNames;
 
-type EventConversionResult = std::result::Result<CommandEvent, EventConversionError>;
+type EventParsingResult = std::result::Result<CommandEvent, EventParsingFailure>;
 
 impl CommandEvent {
-    pub fn new(raw_event: RawCommandEvent) -> EventConversionResult {
+    pub fn new(raw_event: RawCommandEvent) -> EventParsingResult {
         let event_name = raw_event.event_name.as_str().to_lowercase();
 
         if Self::VARIANTS.contains(&event_name.as_str()) {
             deserialize_recognized_event(raw_event)
         } else {
-            Err(EventConversionError::UnrecognizedEvent(raw_event))
+            Err(EventParsingFailure::UnrecognizedEvent(raw_event))
         }
     }
 }
 
 impl TryFrom<RawCommandEvent> for CommandEvent {
-    type Error = EventConversionError;
+    type Error = EventParsingFailure;
 
     fn try_from(raw_event: RawCommandEvent) -> Result<Self, Self::Error> {
         CommandEvent::new(raw_event)
-    }
-}
-
-/// Internal struct to hold the narrative parts of the
-/// RawCommandExecution to minimize clones.
-struct Narrative {
-    valid: bool,
-    reason: Option<String>,
-    narration: String,
-}
-
-fn from_raw_success(raw: Narrative, events: Vec<CommandEvent>) -> AiCommand {
-    AiCommand {
-        events,
-        valid: raw.valid,
-        reason: match &raw.reason {
-            Some(reason) if !raw.valid && reason.is_empty() => {
-                Some("invalid for unknown reason".to_string())
-            }
-            Some(_) if !raw.valid => raw.reason,
-            _ => None,
-        },
-        narration: raw.narration,
     }
 }
 
@@ -64,8 +38,14 @@ pub async fn convert_raw_execution(
     db: &Database,
 ) -> ExecutionConversionResult {
     if !raw_exec.valid {
-        return ExecutionConversionResult::Success(AiCommand::from_raw_invalid(raw_exec));
+        return Ok(AiCommand::from_raw_invalid(raw_exec));
     }
+
+    if raw_exec.event.is_none() {
+        return Ok(AiCommand::empty());
+    }
+
+    let raw_event = raw_exec.event.unwrap();
 
     let narrative = Narrative {
         valid: raw_exec.valid,
@@ -73,53 +53,25 @@ pub async fn convert_raw_execution(
         narration: std::mem::take(&mut raw_exec.narration),
     };
 
-    let conversions: Vec<_> = raw_exec
-        .events
-        .into_iter()
-        .map(|raw_event| CommandEvent::new(raw_event))
-        .collect();
-
-    let (converted, conversion_failures): (Vec<_>, Vec<_>) =
-        conversions.into_iter().partition_map(|res| match res {
-            Ok(converted_event) => Either::Left(converted_event),
-            Err(err) => Either::Right(err),
-        });
-
-    // Coherence validation of converted events.
-    let (successes, incoherent_events) = partition!(
-        stream::iter(converted.into_iter()).then(|event| validate_event_coherence(db, event))
-    );
-
-    let failure_len = conversion_failures.len() + incoherent_events.len();
-
-    if successes.len() > 0 && failure_len == 0 {
-        ExecutionConversionResult::Success(from_raw_success(narrative, successes))
-    } else if successes.len() > 0 && failure_len > 0 {
-        let converted_execution = from_raw_success(narrative, successes);
-        let failures =
-            EventConversionFailures::from_failures(conversion_failures, incoherent_events);
-        ExecutionConversionResult::PartialSuccess(converted_execution, failures)
-    } else {
-        ExecutionConversionResult::Failure(EventConversionFailures::from_failures(
-            conversion_failures,
-            incoherent_events,
-        ))
-    }
+    let converted_event = CommandEvent::new(raw_event)?;
+    let cmd = AiCommand::from_raw_success(narrative, converted_event);
+    validate_event_coherence(db, cmd)
+        .await
+        .map_err(|e| e.into())
 }
 
 fn deserialize_recognized_event(
     raw_event: RawCommandEvent,
-) -> Result<CommandEvent, EventConversionError> {
+) -> Result<CommandEvent, EventParsingFailure> {
     let event_name = raw_event.event_name.as_str().to_lowercase();
     let event_name = event_name.as_str();
 
     match event_name {
         // informational-related
         "narration" => Ok(CommandEvent::Narration(raw_event.parameter)),
-        "look_at_entity" => Ok(CommandEvent::LookAtEntity {
-            entity_key: strip_prefixes(raw_event.parameter),
-            scene_key: strip_prefixes(raw_event.applies_to),
-        }),
+        "look_at_entity" => Ok(CommandEvent::LookAtEntity(
+            deserialize_and_normalize(raw_event),
+        )),
 
         // scene-related
         "change_scene" => Ok(CommandEvent::ChangeScene {
@@ -144,54 +96,77 @@ fn deserialize_recognized_event(
         "take_damage" => deserialize_take_damage(raw_event),
 
         // unrecognized
-        _ => Err(EventConversionError::UnrecognizedEvent(raw_event)),
+        _ => Err(EventParsingFailure::UnrecognizedEvent(raw_event)),
+    }
+}
+
+/// Deserialize and normalize an expected UUID parameter.
+fn deserialize_and_normalize(raw_event: RawCommandEvent) -> String {
+    let mut key = if !raw_event.applies_to.is_empty() {
+        raw_event.applies_to
+    } else {
+        raw_event.parameter
+    };
+
+    let mut key = strip_prefixes(key);
+    super::coherence::normalize_keys(&mut [&mut key]);
+
+    key
+}
+
+fn deserialize_single(raw_event: RawCommandEvent) -> String {
+    if !raw_event.applies_to.is_empty() {
+        raw_event.applies_to
+    } else {
+        raw_event.parameter
     }
 }
 
 fn deserialize_take_damage(
     raw_event: RawCommandEvent,
-) -> Result<CommandEvent, EventConversionError> {
+) -> Result<CommandEvent, EventParsingFailure> {
     match raw_event.parameter.parse::<u32>() {
         Ok(dmg) => Ok(CommandEvent::TakeDamage {
             target: strip_prefixes(raw_event.applies_to),
             amount: dmg,
         }),
-        Err(_) => Err(EventConversionError::InvalidParameter(raw_event)),
+        Err(_) => Err(EventParsingFailure::InvalidParameter(raw_event)),
     }
 }
 
 pub(super) async fn validate_event_coherence<'a>(
     db: &Database,
-    event: CommandEvent,
-) -> std::result::Result<CommandEvent, EventCoherenceFailure> {
-    match event {
-        CommandEvent::LookAtEntity {
-            ref entity_key,
-            ref scene_key,
-        } => match db.entity_exists(&scene_key, &entity_key).await {
+    cmd: AiCommand,
+) -> std::result::Result<AiCommand, EventCoherenceFailure> {
+    if cmd.event.is_none() {
+        return Ok(cmd);
+    }
+
+    match cmd.event.as_ref().unwrap() {
+        CommandEvent::LookAtEntity(ref entity_key) => match db.entity_exists(&entity_key).await {
             Ok(exists) => match exists {
-                true => Ok(event),
-                false => Err(invalid_converted_event(event).unwrap()),
+                true => Ok(cmd),
+                false => Err(invalid_converted_event(cmd).unwrap()),
             },
-            Err(err) => Err(invalid_converted_event_because_err(event, err)),
+            Err(err) => Err(invalid_converted_event_because_err(cmd, err)),
         },
         CommandEvent::ChangeScene { ref scene_key } => match db.stage_exists(&scene_key).await {
             Ok(exists) => match exists {
-                true => Ok(event),
-                false => Err(invalid_converted_event(event).unwrap()),
+                true => Ok(cmd),
+                false => Err(invalid_converted_event(cmd).unwrap()),
             },
-            Err(err) => Err(invalid_converted_event_because_err(event, err)),
+            Err(err) => Err(invalid_converted_event_because_err(cmd, err)),
         },
-        _ => Ok(event),
+        _ => Ok(cmd),
     }
 }
 
 /// The event was converted from the raw response properly, but the
 /// information contained in the response is not valid.
-fn invalid_converted_event(event: CommandEvent) -> Option<EventCoherenceFailure> {
-    match event {
-        CommandEvent::LookAtEntity { .. } => Some(EventCoherenceFailure::TargetDoesNotExist(event)),
-        CommandEvent::ChangeScene { .. } => Some(EventCoherenceFailure::TargetDoesNotExist(event)),
+fn invalid_converted_event(mut cmd: AiCommand) -> Option<EventCoherenceFailure> {
+    match cmd.event.as_mut().unwrap() {
+        CommandEvent::LookAtEntity { .. } => Some(EventCoherenceFailure::TargetDoesNotExist(cmd)),
+        CommandEvent::ChangeScene { .. } => Some(EventCoherenceFailure::TargetDoesNotExist(cmd)),
         _ => None,
     }
 }
@@ -200,8 +175,8 @@ fn invalid_converted_event(event: CommandEvent) -> Option<EventCoherenceFailure>
 /// something went wrong with attempting to check the coherence of the
 /// converted event.
 fn invalid_converted_event_because_err(
-    event: CommandEvent,
+    cmd: AiCommand,
     err: anyhow::Error,
 ) -> EventCoherenceFailure {
-    EventCoherenceFailure::OtherError(event, format!("{}", err))
+    EventCoherenceFailure::OtherError(cmd, format!("{}", err))
 }

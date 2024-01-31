@@ -14,7 +14,7 @@ use futures::{future, TryFutureExt};
 use std::rc::Rc;
 use uuid::Uuid;
 
-type CoherenceResult = Result<CommandEvent, EventCoherenceFailure>;
+type CoherenceResult = Result<AiCommand, EventCoherenceFailure>;
 
 pub struct CommandCoherence<'a> {
     logic: Rc<AiLogic>,
@@ -35,33 +35,20 @@ impl CommandCoherence<'_> {
         }
     }
 
-    pub async fn fix_incoherent_events(
+    pub async fn fix_incoherent_event(
         &self,
-        failures: Vec<EventCoherenceFailure>,
+        failure: EventCoherenceFailure,
     ) -> ExecutionConversionResult {
-        let (successes, failures) = partition!(
-            stream::iter(failures.into_iter()).then(|failure| self.cohere_event(failure))
-        );
-
         // TODO we need to use LLM on events that have failed non-LLM coherence.
-
-        if successes.len() > 0 && failures.len() == 0 {
-            ExecutionConversionResult::Success(AiCommand::from_events(successes))
-        } else if successes.len() > 0 && failures.len() > 0 {
-            ExecutionConversionResult::PartialSuccess(
-                AiCommand::from_events(successes),
-                failures.into(),
-            )
-        } else {
-            ExecutionConversionResult::Failure(failures.into())
-        }
+        let coherent_event = self.cohere_event(failure).await?;
+        Ok(coherent_event)
     }
 
     async fn cohere_event(&self, failure: EventCoherenceFailure) -> CoherenceResult {
         let event_fix = async {
             match failure {
-                EventCoherenceFailure::TargetDoesNotExist(event) => {
-                    self.fix_target_does_not_exist(event).await
+                EventCoherenceFailure::TargetDoesNotExist(cmd) => {
+                    self.fix_target_does_not_exist(cmd).await
                 }
                 EventCoherenceFailure::OtherError(event, _) => future::ok(event).await,
             }
@@ -72,20 +59,22 @@ impl CommandCoherence<'_> {
             .await
     }
 
-    async fn fix_target_does_not_exist(&self, mut event: CommandEvent) -> CoherenceResult {
-        if let CommandEvent::LookAtEntity {
-            ref mut entity_key,
-            ref mut scene_key,
-        } = event
-        {
-            let res = cohere_scene_and_entity(&self.db, &self.stage, entity_key, scene_key).await;
+    async fn fix_target_does_not_exist(&self, mut cmd: AiCommand) -> CoherenceResult {
+        if cmd.event.is_none() {
+            return Ok(cmd);
+        }
+
+        let event: &mut CommandEvent = cmd.event.as_mut().unwrap();
+
+        if let CommandEvent::LookAtEntity(ref mut entity_key) = event {
+            let res = cohere_scene_and_entity(&self.db, &self.stage, entity_key).await;
 
             match res {
-                Ok(_) => Ok(event),
-                Err(err) => Err(EventCoherenceFailure::OtherError(event, err.to_string())),
+                Ok(_) => Ok(cmd),
+                Err(err) => Err(EventCoherenceFailure::OtherError(cmd, err.to_string())),
             }
         } else {
-            Ok(event)
+            Ok(cmd)
         }
     }
 }
@@ -96,29 +85,11 @@ async fn cohere_scene_and_entity(
     db: &Database,
     stage: &Stage,
     entity_key: &mut String,
-    scene_key: &mut String,
 ) -> AnyhowResult<()> {
     // Normalize UUIDs, assuming that they are proper UUIDs.
-    normalize_keys(scene_key, entity_key);
+    normalize_keys(&mut [entity_key]);
 
-    // Sometimes scene key is actually the entity key, and the entity
-    // key is blank.
-    if !scene_key.is_empty() && scene_key != &stage.key {
-        // Check if scene key is an entity
-        if db.entity_exists(&stage.key, &scene_key).await? {
-            entity_key.clear();
-            entity_key.push_str(&scene_key);
-            scene_key.clear();
-            scene_key.push_str(&stage.key);
-        }
-    }
-
-    // If scene key isn't valid, override it from known-good
-    // information.
-    if !is_valid_scene_key(scene_key) {
-        scene_key.clear();
-        scene_key.push_str(&stage.key);
-    }
+    let scene_key = &stage.key;
 
     // If entity key is not a valid UUID at this point, then we have
     // entered a weird situation.
@@ -132,14 +103,11 @@ async fn cohere_scene_and_entity(
         return Err(anyhow!("Scene key and entity key are the same"));
     }
 
-    // It is often likely that the scene key and entity key are reversed.
-    if db.entity_exists(&entity_key, &scene_key).await? {
-        std::mem::swap(entity_key, scene_key);
-    }
-
-    Ok(())
+    // Final result is if the entity actually exists or not now.
+    db.entity_exists(entity_key).await.map(|_| ())
 }
 
+#[allow(dead_code)]
 fn is_valid_scene_key(scene_key: &str) -> bool {
     scene_key == root_scene_id() || Uuid::try_parse(&scene_key).is_ok()
 }
@@ -157,15 +125,12 @@ pub fn strip_prefixes(value: String) -> String {
 }
 
 /// Make sure entity keys are valid UUIDs, and fix them if possible.
-fn normalize_keys(scene_key: &mut String, entity_key: &mut String) {
-    if let Some(normalized) = normalize_uuid(&scene_key) {
-        scene_key.clear();
-        scene_key.push_str(&normalized);
-    }
-
-    if let Some(normalized) = normalize_uuid(&entity_key) {
-        entity_key.clear();
-        entity_key.push_str(&normalized);
+pub(super) fn normalize_keys(keys: &mut [&mut String]) {
+    for key in keys {
+        if let Some(normalized) = normalize_uuid(&key) {
+            key.clear();
+            key.push_str(&normalized);
+        }
     }
 }
 

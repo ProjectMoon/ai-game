@@ -25,7 +25,7 @@ impl GameState {
         match event {
             CommandEvent::ChangeScene { scene_key } => self.change_scene(&scene_key).await?,
             CommandEvent::Narration(narration) => println!("\n\n{}\n\n", narration),
-            CommandEvent::LookAtEntity { ref entity_key, .. } => self.look_at(entity_key).await?,
+            CommandEvent::LookAtEntity(ref entity_key) => self.look_at(entity_key).await?,
             _ => (),
         }
 
@@ -66,7 +66,7 @@ impl GameState {
     async fn look_at(&mut self, entity_key: &str) -> Result<()> {
         let maybe_entity = self
             .db
-            .load_entity(&self.current_scene.key, entity_key)
+            .load_entity_in_scene(&self.current_scene.key, entity_key)
             .await?;
 
         if let Some(entity) = maybe_entity {
@@ -76,6 +76,8 @@ impl GameState {
             }
 
             display!("\n");
+        } else {
+            display!("You don't see that thing or person here.");
         }
 
         Ok(())

@@ -1,6 +1,6 @@
 use crate::io::display;
 use crate::models::commands::{
-    AiCommand, BuiltinCommand, CommandExecution, ExecutionConversionResult, EventConversionFailures,
+    AiCommand, BuiltinCommand, CommandExecution, ExecutionConversionResult, EventConversionFailure,
 };
 use crate::state::GameState;
 use crate::{commands::CommandExecutor, db::Database};
@@ -42,8 +42,7 @@ impl GameLoop {
         }
 
         display!("\n\n{}\n\n", execution.narration);
-
-        for event in execution.events {
+        if let Some(event) = execution.event {
             self.state.update(event).await?;
         }
 
