@@ -1,37 +1,7 @@
-[package]
-name = "ai-game"
-version = "0.1.0"
-edition = "2021"
+[workspace]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-tokio = { version = "1", features = ["full"] }
-anyhow = "1.0.75"
-futures = "0.3"
-eventsource-client = "0.11.0"
-progenitor = { git = "https://github.com/oxidecomputer/progenitor" }
-progenitor-client = { git = "https://github.com/oxidecomputer/progenitor" }
-reqwest = { version = "0.11", features = ["json", "stream"] }
-serde = { version = "1.0", features = ["derive", "rc"] }
-serde_json = "1.0"
-async-trait = "0.1.74"
-reedline = "0.27.1"
-async-recursion = "1.0.5"
-thiserror = "1.0.53"
-strum = {version = "0.25", features = [ "derive" ] }
-uuid = {version = "1.6.1", features = [ "std", "v7", "fast-rng" ] }
-polodb_core = "4.4.0"
-arangors = "0.5.4"
-itertools = "0.12.0"
-crossterm = "0.27.0"
-textwrap = "0.16.0"
-config = "0.13.4"
-tabled = "0.15.0"
-
-[build-dependencies]
-prettyplease = "0.1.25"
-progenitor = { git = "https://github.com/oxidecomputer/progenitor" }
-progenitor-client = { git = "https://github.com/oxidecomputer/progenitor" }
-serde_json = "1.0"
-syn = "1.0"
+members = [
+    "game",
+    "gbnf",
+    "gbnf_derive"
+]

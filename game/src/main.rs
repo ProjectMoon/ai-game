@@ -1,10 +1,10 @@
+use ai::logic::AiLogic;
 use anyhow::Result;
 use config::Config;
 use game_loop::GameLoop;
-use ai::logic::AiLogic;
 use models::world::scenes::{root_scene_id, Stage};
 use state::GameState;
-use std::{io::stdout, rc::Rc, time::Duration, str::FromStr};
+use std::{io::stdout, rc::Rc, str::FromStr, time::Duration};
 
 use arangors::Connection;
 
@@ -67,7 +67,6 @@ fn load_config() -> Result<GameConfig> {
         .add_source(config::Environment::with_prefix("AIGAME"))
         .build()
         .unwrap();
-
 
     let kobold_endpoint = settings
         .get::<Option<String>>("connection.kobold_endpoint")?

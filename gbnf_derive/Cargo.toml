@@ -1,0 +1,14 @@
+[package]
+name = "gbnf_derive"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+auto_impl = "1.1.2"
+syn = { version = "2.0", features = [ "derive", "full", "parsing", "printing", "visit", "visit-mut", "clone-impls", "proc-macro" ] }
+quote = "1.0.35"
+itertools = "0.12.0"
+gbnf = { path = "../gbnf" }

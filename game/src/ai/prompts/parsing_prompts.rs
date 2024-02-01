@@ -1,18 +1,4 @@
-use crate::ai::convo::AiPrompt;
-
-pub const COMMAND_BNF: &str = r#"
-root ::= Commands
-Command ::= "{"   ws   "\"verb\":"   ws   string   ","   ws   "\"target\":"   ws   string   ","   ws   "\"location\":"   ws   string   ","   ws   "\"using\":"   ws   string   "}"
-Commandlist ::= "[]" | "["   ws   Command   (","   ws   Command)*   "]"
-Commands ::= "{"   ws   "\"commands\":"   ws   Commandlist   ","   ws   "\"count\":"   ws   number   "}"
-Commandslist ::= "[]" | "["   ws   Commands   (","   ws   Commands)*   "]"
-string ::= "\""   ([^"]*)   "\""
-boolean ::= "true" | "false"
-ws ::= [ \t\n]*
-number ::= [0-9]+   "."?   [0-9]*
-stringlist ::= "["   ws   "]" | "["   ws   string   (","   ws   string)*   ws   "]"
-numberlist ::= "["   ws   "]" | "["   ws   string   (","   ws   number)*   ws   "]"
-"#;
+use crate::{ai::convo::AiPrompt, models::commands::ParsedCommands};
 
 pub const INTRO_PROMPT: &'static str = r#"
 [INST]
@@ -104,8 +90,8 @@ Text: `{}`
 [/INST]";
 
 pub fn intro_prompt(cmd: &str) -> AiPrompt {
-    let mut prompt = INTRO_PROMPT.replace("{}", cmd);
-    AiPrompt::new_with_grammar(&prompt, COMMAND_BNF)
+    let prompt = INTRO_PROMPT.replace("{}", cmd);
+    AiPrompt::new_with_grammar(&prompt, &ParsedCommands::to_grammar())
 }
 
 pub fn continuation_prompt(cmd: &str) -> AiPrompt {
@@ -116,11 +102,11 @@ pub fn continuation_prompt(cmd: &str) -> AiPrompt {
 
     prompt.push_str("[/INST]");
 
-    AiPrompt::new_with_grammar(&prompt, COMMAND_BNF)
+    AiPrompt::new_with_grammar(&prompt, &ParsedCommands::to_grammar())
 }
 
 pub fn coherence_prompt() -> AiPrompt {
-    AiPrompt::new_with_grammar(COHERENCE_PROMPT, COMMAND_BNF)
+    AiPrompt::new_with_grammar(COHERENCE_PROMPT, &ParsedCommands::to_grammar())
 }
 
 pub fn find_verbs_prompt(cmd: &str) -> AiPrompt {

@@ -3,6 +3,8 @@ use std::fmt::Display;
 use serde::{Deserialize, Serialize};
 use strum::{EnumString, EnumVariantNames};
 use thiserror::Error;
+use gbnf::prelude::*;
+use gbnf_derive::Gbnf;
 
 /// Stored in the database to bypass AI 'parsing' when possible.
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -12,7 +14,7 @@ pub struct CachedParsedCommand {
     pub commands: ParsedCommands,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Gbnf)]
 pub struct ParsedCommands {
     #[serde(default)]
     pub original: String, // The original text entered by the player, set by code.
@@ -30,7 +32,7 @@ impl ParsedCommands {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Gbnf)]
 pub struct ParsedCommand {
     pub verb: String,
     pub target: String,
