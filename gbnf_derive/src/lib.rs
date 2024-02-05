@@ -37,26 +37,22 @@ fn generate_gbnf(input: TokenStream, create_struct: bool) -> TokenStream {
     // run, and then shove the resulting GBNF rule into the type as a
     // static string.
 
-    if let Ok(expr_struct) = syn::parse::<GbnfStructDef>(input.clone()) {
+    if let Ok(expr_struct) = syn::parse::<GbnfStructDef>(input) {
         let struct_name_str = LitStr::new(&expr_struct.name.to_string(), Span::call_site().into());
         let struct_name = expr_struct.name;
         let fields = expr_struct.fields.iter();
 
-        let gbnfs: Vec<_> = expr_struct
-            .fields
-            .iter()
-            .map(|field| {
-                let field_type = &field.ty;
-                let field_ident = field
-                    .ident
-                    .clone()
-                    .map(|i| i.to_string())
-                    .map(|field_name| LitStr::new(&field_name, Span::call_site().into()))
-                    .expect("no ident");
+        let gbnfs = expr_struct.fields.iter().map(|field| {
+            let field_type = &field.ty;
+            let field_ident = field
+                .ident
+                .as_ref()
+                .map(|i| i.to_string())
+                .map(|field_name| LitStr::new(&field_name, Span::call_site().into()))
+                .expect("no ident");
 
-                quote! { gbnf_field!(#field_ident, #field_type) }
-            })
-            .collect();
+            quote! { gbnf_field!(#field_ident, #field_type) }
+        });
 
         let struct_frag = if create_struct {
             quote! {
@@ -94,7 +90,6 @@ fn generate_gbnf(input: TokenStream, create_struct: bool) -> TokenStream {
         panic!("Can only generate GBNF from structs (pub or private)");
     }
 }
-
 
 /// Create a GBNF complex type as a Rust struct.
 #[proc_macro]
