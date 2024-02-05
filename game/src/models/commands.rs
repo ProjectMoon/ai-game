@@ -40,7 +40,7 @@ pub struct ParsedCommand {
     pub using: String,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Gbnf)]
 pub struct VerbsResponse {
     pub verbs: Vec<String>,
 }

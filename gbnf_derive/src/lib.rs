@@ -68,8 +68,10 @@ fn generate_gbnf(input: TokenStream, create_struct: bool) -> TokenStream {
             #struct_frag
 
             impl #struct_name {
-                pub fn to_grammar() -> String {
-                    Self::to_gbnf().as_complex().to_grammar()
+                pub fn to_grammar() -> &'static str {
+                    use std::sync::OnceLock;
+                    static GRAMMAR: OnceLock<String> = OnceLock::new();
+                    GRAMMAR.get_or_init(|| Self::to_gbnf().as_complex().to_grammar())
                 }
             }
 

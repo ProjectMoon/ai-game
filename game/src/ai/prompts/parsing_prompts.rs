@@ -1,4 +1,7 @@
-use crate::{ai::convo::AiPrompt, models::commands::ParsedCommands};
+use crate::{
+    ai::convo::AiPrompt,
+    models::commands::{ParsedCommands, VerbsResponse},
+};
 
 pub const INTRO_PROMPT: &'static str = r#"
 [INST]
@@ -69,18 +72,6 @@ Check the generated commands for coherence according to these instructions. Your
 [/INST]
 "#;
 
-pub const FIND_VERBS_BNF: &str = r#"
-root ::= Verbs
-Verbs ::= "{"   ws   "\"verbs\":"   ws   stringlist   "}"
-Verbslist ::= "[]" | "["   ws   Verbs   (","   ws   Verbs)*   "]"
-string ::= "\""   ([^"]*)   "\""
-boolean ::= "true" | "false"
-ws ::= [ \t\n]*
-number ::= [0-9]+   "."?   [0-9]*
-stringlist ::= "["   ws   "]" | "["   ws   string   (","   ws   string)*   ws   "]"
-numberlist ::= "["   ws   "]" | "["   ws   string   (","   ws   number)*   ws   "]"
-"#;
-
 pub const FIND_VERBS_PROMPT: &'static str = "
 [INST]
 
@@ -91,7 +82,7 @@ Text: `{}`
 
 pub fn intro_prompt(cmd: &str) -> AiPrompt {
     let prompt = INTRO_PROMPT.replace("{}", cmd);
-    AiPrompt::new_with_grammar(&prompt, &ParsedCommands::to_grammar())
+    AiPrompt::new_with_grammar(&prompt, ParsedCommands::to_grammar())
 }
 
 pub fn continuation_prompt(cmd: &str) -> AiPrompt {
@@ -102,14 +93,14 @@ pub fn continuation_prompt(cmd: &str) -> AiPrompt {
 
     prompt.push_str("[/INST]");
 
-    AiPrompt::new_with_grammar(&prompt, &ParsedCommands::to_grammar())
+    AiPrompt::new_with_grammar(&prompt, ParsedCommands::to_grammar())
 }
 
 pub fn coherence_prompt() -> AiPrompt {
-    AiPrompt::new_with_grammar(COHERENCE_PROMPT, &ParsedCommands::to_grammar())
+    AiPrompt::new_with_grammar(COHERENCE_PROMPT, ParsedCommands::to_grammar())
 }
 
 pub fn find_verbs_prompt(cmd: &str) -> AiPrompt {
     let prompt = FIND_VERBS_PROMPT.replace("{}", cmd);
-    AiPrompt::new_with_grammar(&prompt, FIND_VERBS_BNF)
+    AiPrompt::new_with_grammar(&prompt, VerbsResponse::to_grammar())
 }
