@@ -45,27 +45,6 @@ macro_rules! define_field_type {
     };
 }
 
-macro_rules! define_array_blanket_impl {
-    ($len:expr) => {
-        impl<T> AsGbnf for [T; $len]
-        where
-            T: AsGbnf + DeserializeOwned,
-        {
-            fn to_gbnf() -> GbnfFieldType {
-                use GbnfFieldType::*;
-                match <T as AsGbnf>::to_gbnf() {
-                    Primitive(primitive_type) => PrimitiveList(primitive_type),
-                    OptionalPrimitive(primitive_type) => PrimitiveList(primitive_type),
-                    Complex(complex_type) => ComplexList(complex_type),
-                    OptionalComplex(complex_type) => ComplexList(complex_type),
-                    Limited(_) => panic!("limited values are not yet supported"),
-                    ComplexList(_) | PrimitiveList(_) => panic!("nested lists not supported"),
-                }
-            }
-        }
-    };
-}
-
 #[macro_export]
 macro_rules! gbnf_field_type {
     ($type:ty) => {
@@ -99,27 +78,27 @@ define_field_type!(bool, GbnfFieldType::Primitive(GbnfPrimitive::Boolean));
 define_field_type!(String, GbnfFieldType::Primitive(GbnfPrimitive::String));
 define_field_type!(char, GbnfFieldType::Primitive(GbnfPrimitive::String));
 
-// Macro-based blanket impls for arrays
-define_array_blanket_impl!(1);
-define_array_blanket_impl!(3);
-define_array_blanket_impl!(4);
-define_array_blanket_impl!(5);
-define_array_blanket_impl!(6);
-define_array_blanket_impl!(7);
-define_array_blanket_impl!(8);
-define_array_blanket_impl!(9);
-define_array_blanket_impl!(10);
-define_array_blanket_impl!(11);
-define_array_blanket_impl!(12);
-define_array_blanket_impl!(13);
-define_array_blanket_impl!(14);
-define_array_blanket_impl!(15);
-define_array_blanket_impl!(16);
-
 // Blanket implementations to cover more types
+impl<T, const N: usize> AsGbnf for [T; N]
+where
+    T: AsGbnf + DeserializeOwned,
+{
+    fn to_gbnf() -> GbnfFieldType {
+        use GbnfFieldType::*;
+        match <T as AsGbnf>::to_gbnf() {
+            Primitive(primitive_type) => PrimitiveList(primitive_type),
+            OptionalPrimitive(primitive_type) => PrimitiveList(primitive_type),
+            Complex(complex_type) => ComplexList(complex_type),
+            OptionalComplex(complex_type) => ComplexList(complex_type),
+            Limited(_) => panic!("limited values are not yet supported"),
+            ComplexList(_) | PrimitiveList(_) => panic!("nested lists not supported"),
+        }
+    }
+}
+
 impl<T> AsGbnf for Vec<T>
 where
-    T: AsGbnf,
+    T: AsGbnf + DeserializeOwned,
 {
     fn to_gbnf() -> GbnfFieldType {
         use GbnfFieldType::*;
@@ -136,7 +115,7 @@ where
 
 impl<T> AsGbnf for Option<T>
 where
-    T: AsGbnf,
+    T: AsGbnf + DeserializeOwned,
 {
     fn to_gbnf() -> GbnfFieldType {
         use GbnfFieldType::*;

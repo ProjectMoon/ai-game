@@ -89,7 +89,7 @@ fn generate_gbnf(input: TokenStream, create_struct: bool) -> TokenStream {
 
         code.into()
     } else {
-        panic!("Can only generate GBNF from structs (pub or private)");
+        panic!("Can only generate GBNF from structs of owned data (pub or private)");
     }
 }
 
